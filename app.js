@@ -103,6 +103,11 @@ const DE = {
     "1. {name} scannt diesen Code (Bierdeckel → {you} → „Per QR-Code abgleichen“ → „Seinen Code scannen“). 2. Dann scannst du seinen.",
   "The code changes by itself. Hold it steady until it is complete.": "Der Code wechselt von selbst. Halte die Kamera ruhig, bis alles gelesen ist.",
   "Scan their code": "Seinen Code scannen",
+  "This one code holds your whole tab with {name}.": "Dieser eine Code enthält euren ganzen Deckel mit {name}.",
+  "This one code holds the {n} newest changes. Scan again afterwards for the older ones.": "Dieser eine Code enthält die {n} neuesten Änderungen. Scannt danach nochmal für die älteren.",
+  "{name} opens your page in Bierdeckel, taps “Sync by QR code” → “Scan their code” and scans this. Then you scan theirs.":
+    "{name} öffnet in Bierdeckel deine Seite, tippt auf „Per QR-Code abgleichen“ → „Seinen Code scannen“ und scannt diesen Code. Dann scannst du seinen.",
+  "{n} older changes did not fit. They come along the next time you sync.": "{n} ältere Änderungen passten nicht mehr rein. Sie kommen beim nächsten Abgleich mit.",
   "Code {k} of {n}": "Code {k} von {n}",
   "Your data is split into {n} codes that change by themselves. Hold the camera steady until all are read.": "Deine Daten sind auf {n} Codes verteilt, die von selbst wechseln. Halte die Kamera ruhig, bis alle gelesen sind.",
   "Reading code {got} of {of}…": "Lese Code {got} von {of}…",
@@ -204,8 +209,8 @@ async function addContact(c) {
   go("friend", c.id);
 }
 qrcode.stringToBytes = qrcode.stringToBytesFuncs["UTF-8"];
-function qrSvg(text) {
-  const q = qrcode(0, "M"); q.addData(text); q.make();
+function qrSvg(text, ecc) {
+  const q = qrcode(0, ecc || "M"); q.addData(text); q.make();
   const box = h("div", { class: "qr" }); box.innerHTML = q.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
   return box;
 }
@@ -641,30 +646,35 @@ function exportBackup() {
   document.body.append(a); a.click(); a.remove();
 }
 
-// ---------- sync in person by QR code: the code carries the data itself, no internet or Bluetooth ----------
-const FRAME = 200;
+// ---------- sync in person by ONE QR code: the code carries the data itself, no internet or Bluetooth ----------
+// Each code lists short fingerprints of every entry the sender holds ("have"), and only the entries the
+// receiver is not known to have yet (newest first, as many as fit). Scanning the other phone's code
+// tells this phone what the other already has, so the next code carries only what is new.
+const QR_MAX = 1600; // compressed characters in ONE code: ~125x125 modules, still easy for a camera
+const changedAt = r => Math.max(r.p.at || 0, (r.r && r.r.at) || 0, (r.w && r.w.at) || 0);
+const fp = async r => (await L.sha256hex(JSON.stringify([r.p.id, r.r && r.r.at, r.r && r.r.status, r.w && r.w.at]))).slice(0, 6);
+async function z(json) {
+  const s = new Blob([json]).stream().pipeThrough(new CompressionStream("deflate-raw"));
+  return L.b64u(new Uint8Array(await new Response(s).arrayBuffer()));
+}
+async function unz(b) {
+  const s = new Blob([L.unb64u(b)]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+  return JSON.parse(await new Response(s).text());
+}
 async function packFor(f) {
-  const json = JSON.stringify({ v: 1, id: S.me.id, name: S.me.name, pub: S.me.pub, to: f, recs: recordsWith(f) });
-  const z = new Blob([json]).stream().pipeThrough(new CompressionStream("deflate-raw"));
-  const b = L.b64u(new Uint8Array(await new Response(z).arrayBuffer()));
-  const sid = L.b64u(crypto.getRandomValues(new Uint8Array(3))), n = Math.max(1, Math.ceil(b.length / FRAME));
-  return Array.from({ length: n }, (_, i) => `BD1:${sid}:${i}:${n}:${b.slice(i * FRAME, (i + 1) * FRAME)}`);
-}
-async function unpack(b) {
-  const z = new Blob([L.unb64u(b)]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
-  return JSON.parse(await new Response(z).text());
-}
-const frames = new Map(); // sid -> { n, parts }
-function collectFrame(data) {
-  const [, sid, i, n, chunk] = data.split(":");
-  let f = frames.get(sid);
-  if (!f) { f = { n: +n, parts: new Map() }; frames.set(sid, f); }
-  f.parts.set(+i, chunk || "");
-  return f.parts.size >= f.n ? Array.from({ length: f.n }, (_, k) => f.parts.get(k)).join("") : { got: f.parts.size, of: f.n };
+  const c = S.contacts[f], recs = recordsWith(f);
+  const fps = await Promise.all(recs.map(fp));
+  const theyHave = new Set(c.peerHave || []);
+  let send = recs.filter((r, i) => !theyHave.has(fps[i])).sort((x, y) => changedAt(y) - changedAt(x));
+  const base = { v: 2, id: S.me.id, name: S.me.name, pub: S.me.pub, to: f, have: fps.join("") };
+  const total = send.length;
+  let b = await z(JSON.stringify({ ...base, recs: send }));
+  while (b.length > QR_MAX && send.length) { send = send.slice(0, Math.max(0, Math.floor(send.length * 0.7))); b = await z(JSON.stringify({ ...base, recs: send })); }
+  return { code: "BD2:" + b, sent: send.length, total };
 }
 async function receiveSync(b) {
   let o;
-  try { o = await unpack(b); } catch { return toast(t("That code could not be read. Try again.")); }
+  try { o = await unz(b); } catch { return toast(t("That code could not be read. Try again.")); }
   if (!o || !o.id || !o.pub || (await L.idFromPub(String(o.pub))) !== o.id) return toast(t("That code could not be read. Try again."));
   if (o.id === S.me.id) return toast(t("That is your own code. Scan your friend's code instead."));
   if (o.to && o.to !== S.me.id) return toast(t("This code was made for someone else."));
@@ -673,36 +683,32 @@ async function receiveSync(b) {
   else if (S.contacts[o.id].pub !== o.pub) return toast(t("This code does not match the friend you already have."));
   delete S.requests[o.id];
   const before = recordsWith(o.id).map(x => JSON.stringify(x)).join();
-  await absorb(o.id, o.recs);
+  await absorb(o.id, o.recs || []);
   const now = recordsWith(o.id).map(x => JSON.stringify(x)).join();
+  const hv = String(o.have || "");
+  S.contacts[o.id].peerHave = hv.match(/.{6}/g) || [];
   S.contacts[o.id].lastSeen = Date.now();
   await save(); btStart();
   toast(before === now ? t("Already up to date with {name}.", { name }) : t("Updated from {name}.", { name }));
   openSync(o.id, true);
 }
-let syncTimer = null;
 async function openSync(f, afterScan) {
-  V.sync = { f, frames: await packFor(f), afterScan: !!afterScan, k: 0 };
+  V.sync = { f, ...(await packFor(f)), afterScan: !!afterScan };
   go("sync", f);
 }
 function syncView() {
   const f = V.friend, c = S.contacts[f], sy = V.sync;
   if (!c || !sy || sy.f !== f) { V.view = "home"; return homeView(); }
-  const box = qrSvg(sy.frames[0]); box.id = "syncqr";
-  clearInterval(syncTimer);
-  if (sy.frames.length > 1) syncTimer = setInterval(() => {
-    const el = document.getElementById("syncqr"); if (!el) return clearInterval(syncTimer);
-    sy.k = (sy.k + 1) % sy.frames.length; el.innerHTML = qrSvg(sy.frames[sy.k]).innerHTML;
-    const lab = document.getElementById("syncpart"); if (lab) lab.textContent = t("Code {k} of {n}", { k: sy.k + 1, n: sy.frames.length });
-  }, 600);
+  const box = qrSvg(sy.code, "L"); box.classList.add("qr-big");
   return [
-    h("div", {}, h("button", { class: "link", onclick: () => { clearInterval(syncTimer); go("friend", f); } }, "← " + c.name)),
+    h("div", {}, h("button", { class: "link", onclick: () => go("friend", f) }, "← " + c.name)),
     h("header", {}, h("h1", {}, t("Sync by QR code")),
       h("p", { class: "sub" }, sy.afterScan ? t("Done on your side. Now let {name} scan this code so their phone gets your changes too.", { name: c.name })
-        : t("1. {name} scans this code (Bierdeckel → {you} → “Sync by QR code” → “Scan their code”). 2. Then you scan theirs.", { name: c.name, you: S.me.name }))),
+        : t("{name} opens your page in Bierdeckel, taps “Sync by QR code” → “Scan their code” and scans this. Then you scan theirs.", { name: c.name }))),
     box,
-    sy.frames.length > 1 ? h("p", { class: "sub", style: "text-align:center" }, h("b", { id: "syncpart" }, t("Code {k} of {n}", { k: 1, n: sy.frames.length })), " · ",
-      t("Your data is split into {n} codes that change by themselves. Hold the camera steady until all are read.", { n: sy.frames.length })) : null,
+    h("p", { class: "sub", style: "text-align:center" }, sy.sent >= sy.total
+      ? t("This one code holds your whole tab with {name}.", { name: c.name })
+      : t("This one code holds the {n} newest changes. Scan again afterwards for the older ones.", { n: sy.sent })),
     h("div", { class: "actions", style: "justify-content:center" }, h("button", { class: "primary", onclick: startScan }, t("Scan their code"))),
   ];
 }
@@ -717,7 +723,7 @@ async function startScan() {
   let done = false;
   const stop = () => { done = true; stream.getTracks().forEach(t => t.stop()); overlay.remove(); };
   const overlay = h("div", { style: "position:fixed;inset:0;z-index:10;background:var(--bg);padding:max(20px,env(safe-area-inset-top)) 16px 20px;display:flex;flex-direction:column;gap:14px" },
-    h("h2", {}, t("Point at your friend's code")), video, h("p", { class: "sub", id: "scanprog" }), h("button", { onclick: stop }, t("Cancel")));
+    h("h2", {}, t("Point at your friend's code")), video, h("button", { onclick: stop }, t("Cancel")));
   document.body.append(overlay);
   video.srcObject = stream; await video.play().catch(() => { });
   const tick = async () => {
@@ -727,11 +733,8 @@ async function startScan() {
       canvas.width = w * s; canvas.height = hgt * s;
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       const code = jsQR(ctx.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height, { inversionAttempts: "dontInvert" });
-      if (code && code.data.startsWith("BD1:")) {
-        const got = collectFrame(code.data);
-        if (typeof got === "string") { stop(); return receiveSync(got); }
-        const pg = document.getElementById("scanprog"); if (pg) pg.textContent = t("Reading code {got} of {of}…", got);
-      } else if (code) {
+      if (code && code.data.startsWith("BD2:")) { stop(); return receiveSync(code.data.slice(4)); }
+      else if (code) {
         const c = await parsePair(code.data);
         if (c) { stop(); return addContact(c); }
       }
