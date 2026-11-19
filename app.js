@@ -800,5 +800,18 @@ setInterval(keepAlive, 25000);
   render();
   await handleHash();
   if (S) { startPeer(); btStart(); }
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => { });
+  if ("serviceWorker" in navigator) {
+    try {
+      const reg = await navigator.serviceWorker.register("sw.js");
+      // a new version is ready: take it at once, so nobody is left on an old app
+      let reloading = false;
+      navigator.serviceWorker.addEventListener("controllerchange", () => { if (!reloading) { reloading = true; location.reload(); } });
+      reg.addEventListener("updatefound", () => {
+        const w = reg.installing; if (!w) return;
+        w.addEventListener("statechange", () => { if (w.state === "installed" && navigator.serviceWorker.controller) w.postMessage("skip"); });
+      });
+      document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") reg.update().catch(() => { }); });
+      setInterval(() => reg.update().catch(() => { }), 300000);
+    } catch { }
+  }
 })();
