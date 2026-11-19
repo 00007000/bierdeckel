@@ -1,5 +1,5 @@
 // Offline cache for the app shell. Bump VERSION when files change.
-const VERSION = "bierdeckel-v15";
+const VERSION = "bierdeckel-v16";
 const FILES = ["./", "index.html", "style.css", "app.js", "ledger.js", "manifest.webmanifest", "icon-192.png", "icon-512.png", "mat.svg",
   "vendor/peerjs.min.js", "vendor/qrcode.js", "vendor/jsQR.js"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(VERSION).then(c => c.addAll(FILES))); self.skipWaiting(); });

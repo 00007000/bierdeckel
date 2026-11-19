@@ -103,6 +103,10 @@ const DE = {
     "1. {name} scannt diesen Code (Bierdeckel → {you} → „Per QR-Code abgleichen“ → „Seinen Code scannen“). 2. Dann scannst du seinen.",
   "The code changes by itself. Hold it steady until it is complete.": "Der Code wechselt von selbst. Halte die Kamera ruhig, bis alles gelesen ist.",
   "Scan their code": "Seinen Code scannen",
+  "Looking for {name} nearby…": "Sucht {name} in der Nähe…",
+  "Looking for {name}…": "Sucht {name}…",
+  "Looking for a code…": "Sucht einen Code…",
+  "Loading…": "Lädt…",
   "Scan with Google Lens": "Mit Google Lens scannen",
   "Google Lens was not found on this phone.": "Google Lens wurde auf diesem Handy nicht gefunden.",
   "Open this in the Bierdeckel app so it lands in your book.": "Öffne das in der Bierdeckel-App, damit es in deinem Deckel landet.",
@@ -172,6 +176,35 @@ function h(tag, attrs, ...kids) {
   }
   for (const k of kids.flat()) if (k != null && k !== false) el.append(k instanceof Node ? k : document.createTextNode(String(k)));
   return el;
+}
+// A pencil counting up: four strokes, then a fifth across them, group after group.
+function tallyLoader(label) {
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("class", "tally"); svg.setAttribute("viewBox", "0 0 132 34"); svg.setAttribute("aria-hidden", "true");
+  const box = h("div", { class: "loading" }, svg, label ? h("span", {}, label) : null);
+  const GW = 30, N = 4; // group width, groups before starting over
+  let n = 0;
+  const line = (x1, y1, x2, y2, len) => {
+    const l = document.createElementNS(NS, "line");
+    l.setAttribute("x1", x1); l.setAttribute("y1", y1); l.setAttribute("x2", x2); l.setAttribute("y2", y2);
+    l.style.strokeDasharray = len; l.style.strokeDashoffset = len;
+    svg.append(l); requestAnimationFrame(() => { l.style.strokeDashoffset = 0; });
+  };
+  let placed = false;
+  const tick = () => {
+    if (box.isConnected) placed = true;            // the first tick runs before it is on the page
+    else if (placed) return clearInterval(timer);  // gone from the page: stop counting
+    const g = Math.floor(n / 5), k = n % 5;
+    if (n && n % (N * 5) === 0) { svg.replaceChildren(); n = 0; return; }
+    const left = 6 + (g % N) * GW;
+    if (k < 4) line(left + k * 5.5 + 1, 5, left + k * 5.5, 29, 24);
+    else line(left - 2, 26, left + 20, 8, 29);
+    n++;
+  };
+  const timer = setInterval(tick, 260);
+  tick();
+  return box;
 }
 function toast(msg) {
   document.querySelectorAll(".toast").forEach(t => t.remove());
@@ -271,11 +304,13 @@ function setupConn(c) {
 const BT = window.BierdeckelAndroid && typeof window.BierdeckelAndroid.bleStart === "function" ? window.BierdeckelAndroid : null;
 const btConns = new Map();
 let btWarned = false;
+let btSearching = false;
 function btStart() { if (BT && S) try { BT.bleStart(S.me.id, JSON.stringify(Object.keys(S.contacts))); } catch (e) { console.warn("bt", e); } }
 window.bleEvent = (type, id, data) => {
   if (type === "log") {
     console.log("[BT]", data);
-    if (data === "bluetooth off" && !btWarned) { btWarned = true; toast(t("Turn on Bluetooth to sync with friends nearby.")); }
+    if (data === "bluetooth off") { btSearching = false; if (!btWarned) { btWarned = true; toast(t("Turn on Bluetooth to sync with friends nearby.")); } render(); }
+    if (data === "advertising" || data === "started") { if (!btSearching) { btSearching = true; render(); } }
     return;
   }
   if (type === "open") {
@@ -589,6 +624,7 @@ function friendView() {
       h("div", { class: "row" }, initial(f), h("div", { class: "grow" }, h("h1", {}, fn),
         h("div", { class: "sub" }, conns.has(f) ? connLabel(f) : c.lastSeen ? t("Last synced {date}", { date: when(c.lastSeen) }) : t("Not synced yet. Open the app at the same time.")))),
       h("div", { class: "big" }, balanceLabel(v)),
+      conns.has(f) ? null : tallyLoader(BT && btSearching ? t("Looking for {name} nearby…", { name: fn }) : t("Looking for {name}…", { name: fn })),
       conns.has(f) ? null : h("div", { class: "card attn" }, h("p", {}, t("Not connected? Sync right here: you scan each other's code once.")),
         h("button", { class: "primary", onclick: () => openSync(f) }, t("Sync by QR code"))),
       v !== 0 ? h("div", {}, h("button", { onclick: () => { kind.value = v > 0 ? "theyPaid" : "iPaid"; amt.value = (Math.abs(v) / 100).toFixed(2); note.value = t("Settled in full"); amt.focus(); } }, t("Record full payback"))) : null),
@@ -741,7 +777,7 @@ async function startScan() {
   let done = false;
   const stop = () => { done = true; stream.getTracks().forEach(t => t.stop()); overlay.remove(); };
   const overlay = h("div", { style: "position:fixed;inset:0;z-index:10;background:var(--bg);padding:max(20px,env(safe-area-inset-top)) 16px 20px;display:flex;flex-direction:column;gap:14px" },
-    h("h2", {}, t("Point at your friend's code")), video, h("button", { onclick: stop }, t("Cancel")));
+    h("h2", {}, t("Point at your friend's code")), video, tallyLoader(t("Looking for a code…")), h("button", { onclick: stop }, t("Cancel")));
   document.body.append(overlay);
   video.srcObject = stream; await video.play().catch(() => { });
   const tick = async () => {

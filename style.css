@@ -76,3 +76,8 @@ video.scan { width: 100%; border-radius: 12px; background: #000 }
 a { color: var(--accent) }
 
 .qr-big { width: min(92vw, 420px); margin: 0 auto }
+
+/* counting-up loader: pencil strokes in groups of five */
+.loading { display: flex; align-items: center; gap: 10px; padding: 10px 2px; color: var(--muted); font-size: 0.92rem }
+.tally { width: 92px; height: 24px; flex: none }
+.tally line { stroke: var(--accent); stroke-width: 2.6; stroke-linecap: round; transition: stroke-dashoffset .22s ease-out }
