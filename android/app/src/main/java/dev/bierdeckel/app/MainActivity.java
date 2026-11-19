@@ -14,15 +14,25 @@ import android.util.Base64;
 import android.webkit.*;
 import android.widget.Toast;
 import java.io.OutputStream;
+import java.util.ArrayList;
+import java.util.List;
+import org.json.JSONArray;
+import android.bluetooth.BluetoothAdapter;
+import android.os.Build;
+import android.util.Log;
 
 public class MainActivity extends Activity {
     static final String HOME = "https://00007000.github.io/bierdeckel/";
     WebView web;
     PermissionRequest pendingPerm;
     ValueCallback<Uri[]> fileCb;
+    BleLink ble;
+    String bleMe; List<String> bleFriends = new ArrayList<>();
+    boolean bleWanted, bleAsked;
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
+        WebView.setWebContentsDebuggingEnabled(true);
         web = new WebView(this);
         setContentView(web);
         WebSettings s = web.getSettings();
@@ -65,8 +75,44 @@ public class MainActivity extends Activity {
                 "const f=new FileReader();f.onload=()=>BierdeckelAndroid.save(n,f.result.split(',')[1]);f.readAsDataURL(b);})()";
             web.evaluateJavascript(js, null);
         });
+        ble = new BleLink(this, new BleLink.Events() {
+            public void open(String id) { js("open", id, null); }
+            public void data(String id, String m) { js("data", id, m); }
+            public void close(String id) { js("close", id, null); }
+            public void log(String m) { Log.i(BleLink.TAG, m); js("log", "", m); }
+        });
         if (b != null) web.restoreState(b); else web.loadUrl(target(getIntent()));
     }
+
+    void js(String type, String id, String data) {
+        String call = "window.bleEvent&&window.bleEvent(" + JSONObjectQuote(type) + "," + JSONObjectQuote(id) + "," + (data == null ? "null" : JSONObjectQuote(data)) + ")";
+        runOnUiThread(() -> web.evaluateJavascript(call, null));
+    }
+    static String JSONObjectQuote(String s) { return org.json.JSONObject.quote(s); }
+
+    String[] blePerms() {
+        return Build.VERSION.SDK_INT >= 31
+            ? new String[]{"android.permission.BLUETOOTH_SCAN", "android.permission.BLUETOOTH_CONNECT", "android.permission.BLUETOOTH_ADVERTISE"}
+            : new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION};
+    }
+    boolean hasBlePerms() {
+        for (String p : blePerms()) if (checkSelfPermission(p) != PackageManager.PERMISSION_GRANTED) return false;
+        return true;
+    }
+    void bleTry() {
+        if (!bleWanted || bleMe == null) return;
+        if (!hasBlePerms()) { if (!bleAsked) { bleAsked = true; requestPermissions(blePerms(), 3); } return; }
+        BluetoothAdapter ad = BluetoothAdapter.getDefaultAdapter();
+        if (ad != null && !ad.isEnabled()) {
+            if (!bleAsked) { bleAsked = true; try { startActivityForResult(new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE), 4); } catch (Exception e) { } }
+            js("log", "", "bluetooth off");
+            return;
+        }
+        ble.start(bleMe, bleFriends);
+    }
+
+    @Override protected void onStop() { super.onStop(); if (ble != null) ble.stop(); }
+    @Override protected void onStart() { super.onStart(); bleTry(); }
 
     static String JSONQuote(String s) { return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\""; }
 
@@ -103,6 +149,7 @@ public class MainActivity extends Activity {
     @Override protected void onSaveInstanceState(Bundle o) { super.onSaveInstanceState(o); web.saveState(o); }
 
     @Override public void onRequestPermissionsResult(int code, String[] p, int[] r) {
+        if (code == 3) { bleTry(); return; }
         if (pendingPerm == null) return;
         if (r.length > 0 && r[0] == PackageManager.PERMISSION_GRANTED) pendingPerm.grant(pendingPerm.getResources());
         else pendingPerm.deny();
@@ -110,6 +157,7 @@ public class MainActivity extends Activity {
     }
 
     @Override protected void onActivityResult(int code, int res, Intent data) {
+        if (code == 4) { bleTry(); return; }
         if (code == 2 && fileCb != null) {
             fileCb.onReceiveValue(res == RESULT_OK && data != null && data.getData() != null ? new Uri[]{data.getData()} : null);
             fileCb = null;
@@ -121,6 +169,20 @@ public class MainActivity extends Activity {
     }
 
     class Bridge {
+        @JavascriptInterface public void bleStart(String me, String friendsJson) {
+            runOnUiThread(() -> {
+                try { JSONArray a = new JSONArray(friendsJson); bleFriends.clear(); for (int i = 0; i < a.length(); i++) bleFriends.add(a.getString(i)); } catch (Exception e) { }
+                bleMe = me; bleWanted = true;
+                ble.setContacts(bleFriends);
+                bleTry();
+            });
+        }
+        @JavascriptInterface public boolean bleSend(String id, String msg) {
+            final boolean[] ok = {false};
+            runOnUiThread(() -> ble.send(id, msg));
+            return true;
+        }
+        @JavascriptInterface public void bleClose(String id) { runOnUiThread(() -> ble.close(id)); }
         @JavascriptInterface public void save(String name, String b64) {
             try {
                 ContentValues v = new ContentValues();

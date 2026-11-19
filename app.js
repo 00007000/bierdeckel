@@ -93,6 +93,8 @@ const DE = {
   "Let them scan this code first. It opens the download page. Once the app is installed, they tap “Add friend” → “Scan friend's code” and scan your code above.":
     "Lass ihn zuerst diesen Code scannen. Er öffnet die Download-Seite. Sobald die App installiert ist, tippt er auf „Freund hinzufügen“ → „Code des Freundes scannen“ und scannt deinen Code oben.",
   "Your code": "Dein Code",
+  "Turn on Bluetooth to sync with friends nearby.": "Schalte Bluetooth ein, um mit Freunden in der Nähe zu synchronisieren.",
+  "Connected via Bluetooth": "Über Bluetooth verbunden",
   "{name} is now connected with you.": "{name} ist jetzt mit dir verbunden.",
   "{name} invites you to Bierdeckel": "{name} lädt dich zu Bierdeckel ein",
   "Your shared tab: who lent whom what. Stored only on your phones.": "Euer gemeinsamer Deckel: wer wem was geliehen hat. Nur auf euren Handys gespeichert.",
@@ -183,7 +185,7 @@ async function addContact(c) {
   S.contacts[c.id] = { ...(old || {}), name: c.name, pub: c.pub, inv: c.inv || (old && old.inv), addedAt: (old && old.addedAt) || Date.now() };
   delete S.requests[c.id];
   await save();
-  connect(c.id);
+  connect(c.id); btStart();
   toast(t("{name} added. You sync whenever both apps are open.", { name: c.name }));
   go("friend", c.id);
 }
@@ -216,6 +218,7 @@ function startPeer() {
 }
 function keepAlive() {
   if (!S || document.visibilityState !== "visible") return;
+  btStart();
   if (!peer || peer.destroyed) return startPeer();
   if (peer.disconnected) { try { peer.reconnect(); } catch { } return; }
   connectAll();
@@ -241,6 +244,32 @@ function setupConn(c) {
   });
   c.on("error", () => { });
 }
+// ---------- Bluetooth (Android app only): same sync protocol, nearby phones, no internet ----------
+const BT = window.BierdeckelAndroid && typeof window.BierdeckelAndroid.bleStart === "function" ? window.BierdeckelAndroid : null;
+const btConns = new Map();
+let btWarned = false;
+function btStart() { if (BT && S) try { BT.bleStart(S.me.id, JSON.stringify(Object.keys(S.contacts))); } catch (e) { console.warn("bt", e); } }
+window.bleEvent = (type, id, data) => {
+  if (type === "log") {
+    console.log("[BT]", data);
+    if (data === "bluetooth off" && !btWarned) { btWarned = true; toast(t("Turn on Bluetooth to sync with friends nearby.")); }
+    return;
+  }
+  if (type === "open") {
+    const old = btConns.get(id); if (old) { old.open = false; old._emit("close"); }
+    const c = {
+      peer: PEER_PREFIX + id, open: true, via: "bt", _h: {},
+      on(e, f) { (this._h[e] = this._h[e] || []).push(f); }, _emit(e, x) { (this._h[e] || []).forEach(f => f(x)); },
+      send(m) { if (this.open) BT.bleSend(id, JSON.stringify(m)); }, close() { this.open = false; BT.bleClose(id); },
+    };
+    btConns.set(id, c); setupConn(c); c._emit("open");
+  } else if (type === "data") {
+    const c = btConns.get(id); if (c) { let m; try { m = JSON.parse(data); } catch { return; } c._emit("data", m); }
+  } else if (type === "close") {
+    const c = btConns.get(id); if (c) { btConns.delete(id); c.open = false; c._emit("close"); }
+  }
+};
+const connLabel = id => { const c = conns.get(id); return c && c.via === "bt" ? t("Connected via Bluetooth") : t("Connected now"); };
 function bind(c, id) {
   c._ctx.who = id; dialing.delete(id); conns.set(id, c);
   S.contacts[id].lastSeen = Date.now();
@@ -342,6 +371,7 @@ async function acceptRequest(id) {
   delete S.requests[id];
   const c = pendingReq.get(id); pendingReq.delete(id);
   if (c && c.open) { bind(c, id); hello(c); } else connect(id);
+  btStart();
   await save(); go("friend", id);
 }
 async function ignoreRequest(id) { delete S.requests[id]; const c = pendingReq.get(id); pendingReq.delete(id); if (c) c.close(); await save(); render(); }
@@ -499,7 +529,7 @@ function homeView() {
         return h("button", { class: "card friend", onclick: () => go("friend", id) },
           h("div", { class: "row" }, initial(id),
             h("div", { class: "grow" }, h("div", { class: "who" }, nameOf(id)),
-              h("div", { class: "sub" }, conns.has(id) ? t("Connected now") : pend ? t(pend > 1 ? "{n} changes pending" : "1 change pending", { n: pend }) : t("Not connected"))),
+              h("div", { class: "sub" }, conns.has(id) ? connLabel(id) : pend ? t(pend > 1 ? "{n} changes pending" : "1 change pending", { n: pend }) : t("Not connected"))),
             balanceLabel(bal[id])));
       })) : h("p", { class: "empty" }, t("No friends yet. Tap “Add friend” and let your friend scan the code with their phone camera."))),
     waiting.length ? h("section", {}, h("div", { class: "sec-head" }, h("h2", {}, t("Waiting for friends")), h("span", { class: "sub" }, t("{n} sent", { n: waiting.length }))),
@@ -523,7 +553,7 @@ function friendView() {
     h("div", {}, h("button", { class: "link", onclick: () => go("home") }, t("← All friends"))),
     h("header", {},
       h("div", { class: "row" }, initial(f), h("div", { class: "grow" }, h("h1", {}, fn),
-        h("div", { class: "sub" }, conns.has(f) ? t("Connected now") : c.lastSeen ? t("Last synced {date}", { date: when(c.lastSeen) }) : t("Not synced yet. Open the app at the same time.")))),
+        h("div", { class: "sub" }, conns.has(f) ? connLabel(f) : c.lastSeen ? t("Last synced {date}", { date: when(c.lastSeen) }) : t("Not synced yet. Open the app at the same time.")))),
       h("div", { class: "big" }, balanceLabel(v)),
       v !== 0 ? h("div", {}, h("button", { onclick: () => { kind.value = v > 0 ? "theyPaid" : "iPaid"; amt.value = (Math.abs(v) / 100).toFixed(2); note.value = t("Settled in full"); amt.focus(); } }, t("Record full payback"))) : null),
     h("div", { class: "card" }, h("div", { class: "row" }, h("span", { class: "grow" }, h("b", {}, t("History check"))),
@@ -653,6 +683,6 @@ setInterval(keepAlive, 25000);
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => { });
   render();
   await handleHash();
-  if (S) startPeer();
+  if (S) { startPeer(); btStart(); }
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => { });
 })();
