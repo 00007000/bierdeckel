@@ -287,6 +287,7 @@ function setupView() {
     h("header", {}, h("div", { class: "eyebrow" }, "Bierdeckel"), h("h1", {}, "Your tab with friends"),
       h("p", { class: "sub" }, "Loans between you and your friends, stored only on your phones. Every change needs the other person's OK.")),
     V.pendingPair ? h("p", { class: "card" }, `${V.pendingPair.name} invited you. Enter your name to connect.`) : null,
+    installHint(),
     V.err ? h("p", { class: "err" }, V.err) : null,
     h("section", { class: "card" }, h("label", {}, "Your name", name), h("button", { class: "primary", onclick: create }, "Start my book")),
   ];
@@ -297,7 +298,19 @@ function requestCards() {
   return Object.entries(S.requests).map(([id, r]) => h("div", { class: "card attn" }, h("p", {}, h("b", {}, r.name), " wants to connect with you."),
     h("div", { class: "actions" }, h("button", { class: "primary", onclick: () => acceptRequest(id) }, "Accept"), h("button", { onclick: () => ignoreRequest(id) }, "Ignore"))));
 }
+const IN_APP = /BierdeckelApp/.test(navigator.userAgent);
+const FIRST_HASH = location.hash.slice(1);
 function installHint() {
+  if (IN_APP) return null;
+  if (/android/i.test(navigator.userAgent)) {
+    const apk = appUrl() + "bierdeckel.apk";
+    const open = "intent://open" + (FIRST_HASH ? "?h=" + encodeURIComponent(FIRST_HASH) : "") +
+      "#Intent;scheme=bierdeckel;package=dev.bierdeckel.app;S.browser_fallback_url=" + encodeURIComponent(apk) + ";end";
+    return h("div", { class: "card attn" },
+      h("p", {}, h("b", {}, "Get the Bierdeckel app."), " Download it, open the file to install it (allow your browser to install apps if asked), then come back here and tap “Open in app”."),
+      FIRST_HASH ? h("p", { class: "sub" }, "Your invite comes along into the app.") : null,
+      h("div", { class: "actions" }, h("a", { class: "button primary", href: apk, download: "Bierdeckel.apk" }, "Download app"), h("a", { class: "button", href: open }, "Open in app")));
+  }
   const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
   if (standalone) return null;
   if (V.install) return h("div", { class: "card attn" }, h("p", {}, "Install Bierdeckel on your home screen so it opens like an app."),

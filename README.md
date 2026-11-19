@@ -17,3 +17,6 @@ PeerJS's bundled TURN relays no longer exist (DNS dead as of 2026-11-19). If two
 mobile networks cannot connect, add a TURN server to `iceServers` in `app.js` (e.g. coturn on your own server).
 
 ## Bump `VERSION` in `sw.js` on every release so phones pick up the update.
+
+## Android app
+`bierdeckel.apk` is a small WebView wrapper (source in `android/`, build with `android/build.sh <code> <name>`). It loads this site, so web updates reach it without reinstalling. Android browsers show a "Get the app" card; invite links can open the app through `bierdeckel://open?h=<hash>`.

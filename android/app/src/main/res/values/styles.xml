@@ -1,0 +1,1 @@
+<resources><style name="Main" parent="@android:style/Theme.Material.NoActionBar"><item name="android:windowBackground">#121715</item><item name="android:statusBarColor">#121715</item><item name="android:navigationBarColor">#121715</item></style></resources>
