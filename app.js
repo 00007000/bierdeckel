@@ -3,7 +3,7 @@
 "use strict";
 const L = window.Ledger;
 // ---------- language: German on German phones, switchable in Settings ----------
-let LANG = (() => { try { const l = localStorage.getItem("lang"); if (l === "de" || l === "en") return l; } catch { } return /^de\b/i.test(navigator.language || "") ? "de" : "en"; })();
+let LANG = (() => { try { const l = localStorage.getItem("lang"); if (l === "de" || l === "en") return l; } catch { } return "de"; })();
 const DE = {
   "You": "Du", "you": "dir", "Friend": "Freund",
   "pending": "offen", "accepted": "angenommen", "refused": "abgelehnt", "withdrawn": "zurückgezogen",
@@ -88,7 +88,13 @@ const DE = {
   "Replace this phone's book with the backup of {name}: {f} friends, {e} entries?": "Den Deckel auf diesem Handy durch das Backup von {name} ersetzen: {f} Freunde, {e} Einträge?",
   "Replace": "Ersetzen", "Cancel": "Abbrechen", "Share the app": "App teilen",
   "Opens Bierdeckel without connecting to you.": "Öffnet Bierdeckel, ohne sich mit dir zu verbinden.",
-  "Your ID {id}": "Deine ID {id}", "Language": "Sprache",
+  "Your ID {id}": "Deine ID {id}",
+  "Friend doesn't have the app yet?": "Dein Freund hat die App noch nicht?",
+  "Let them scan this code first. It opens the download page. Once the app is installed, they tap “Add friend” → “Scan friend's code” and scan your code above.":
+    "Lass ihn zuerst diesen Code scannen. Er öffnet die Download-Seite. Sobald die App installiert ist, tippt er auf „Freund hinzufügen“ → „Code des Freundes scannen“ und scannt deinen Code oben.",
+  "Your code": "Dein Code",
+  "Your friend scans this inside their Bierdeckel app (“Add friend” → “Scan friend's code”).": "Dein Freund scannt ihn in seiner Bierdeckel-App („Freund hinzufügen“ → „Code des Freundes scannen“).",
+  "Opens the download page. No connection to you.": "Öffnet die Download-Seite, ohne Verbindung zu dir.", "Language": "Sprache",
   "Camera not available. Use your phone camera app or paste the link.": "Kamera nicht verfügbar. Nutze die Kamera-App deines Handys oder füge den Link ein.",
   "Point at your friend's code": "Auf den Code deines Freundes richten",
   "That invite link is broken.": "Dieser Einladungslink ist kaputt.",
@@ -149,7 +155,7 @@ const initial = id => h("div", { class: "initial", "aria-hidden": "true" }, (nam
 const go = (view, friend) => { V.view = view; V.friend = friend || null; V.err = ""; render(); window.scrollTo(0, 0); };
 
 // ---------- pairing links ----------
-const appUrl = () => location.origin + location.pathname;
+const appUrl = () => location.origin + location.pathname.replace(/[^/]*$/, "");
 const pairLink = () => appUrl() + "#pair=" + L.b64u(new TextEncoder().encode(JSON.stringify({ id: S.me.id, name: S.me.name, pub: S.me.pub })));
 async function parsePair(text) {
   try {
@@ -504,11 +510,15 @@ function addView() {
   return [
     h("div", {}, h("button", { class: "link", onclick: () => go("home") }, t("← Back"))),
     h("header", {}, h("h1", {}, t("Add a friend")),
-      h("p", { class: "sub" }, t("Your friend scans this with their normal phone camera. If they don't have Bierdeckel yet, the code opens it, they install it, and you're connected."))),
+      h("p", { class: "sub" }, t("Your friend scans this inside their Bierdeckel app (“Add friend” → “Scan friend's code”)."))),
+    h("h2", {}, t("Your code")),
     qrSvg(link),
     h("div", { class: "actions", style: "justify-content:center" },
       h("button", { class: "primary", onclick: startScan }, t("Scan friend's code")),
       h("button", { onclick: async () => { try { await navigator.clipboard.writeText(link); toast(t("Link copied. Send it on WhatsApp.")); } catch { paste.value = link; paste.select(); } } }, t("Copy my link"))),
+    h("section", { class: "card" }, h("h2", {}, t("Friend doesn't have the app yet?")),
+      h("p", { class: "sub" }, t("Let them scan this code first. It opens the download page. Once the app is installed, they tap “Add friend” → “Scan friend's code” and scan your code above.")),
+      qrSvg(appUrl() + "download.html")),
     h("section", { class: "card" }, h("label", {}, t("Got a link from a friend instead?"), paste),
       h("button", { onclick: async () => { const c = await parsePair(paste.value); c ? addContact(c) : toast(t("That link is not a Bierdeckel invite.")); } }, t("Connect"))),
   ];
@@ -541,7 +551,7 @@ function settingsView() {
         h("p", {}, t("Replace this phone's book with the backup of {name}: {f} friends, {e} entries?", { name: imp.me.name, f: Object.keys(imp.contacts).length, e: Object.keys(imp.records).length })),
         h("div", { class: "actions" }, h("button", { class: "danger", onclick: async () => { S = imp; await save(); location.reload(); } }, t("Replace")),
           h("button", { onclick: () => { V.importing = null; render(); } }, t("Cancel")))) : null),
-    h("section", { class: "card" }, h("h2", {}, t("Share the app")), h("p", { class: "sub" }, t("Opens Bierdeckel without connecting to you.")), qrSvg(appUrl())),
+    h("section", { class: "card" }, h("h2", {}, t("Share the app")), h("p", { class: "sub" }, t("Opens the download page. No connection to you.")), qrSvg(appUrl() + "download.html")),
     h("p", { class: "sub chain" }, t("Your ID {id}", { id: S.me.id })),
   ];
 }
