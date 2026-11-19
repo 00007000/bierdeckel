@@ -103,6 +103,10 @@ const DE = {
     "1. {name} scannt diesen Code (Bierdeckel → {you} → „Per QR-Code abgleichen“ → „Seinen Code scannen“). 2. Dann scannst du seinen.",
   "The code changes by itself. Hold it steady until it is complete.": "Der Code wechselt von selbst. Halte die Kamera ruhig, bis alles gelesen ist.",
   "Scan their code": "Seinen Code scannen",
+  "Scan with Google Lens": "Mit Google Lens scannen",
+  "Google Lens was not found on this phone.": "Google Lens wurde auf diesem Handy nicht gefunden.",
+  "Open this in the Bierdeckel app so it lands in your book.": "Öffne das in der Bierdeckel-App, damit es in deinem Deckel landet.",
+  "Set up Bierdeckel first, then scan again.": "Richte Bierdeckel zuerst ein und scanne dann nochmal.",
   "This one code holds your whole tab with {name}.": "Dieser eine Code enthält euren ganzen Deckel mit {name}.",
   "This one code holds the {n} newest changes. Scan again afterwards for the older ones.": "Dieser eine Code enthält die {n} neuesten Änderungen. Scannt danach nochmal für die älteren.",
   "{name} opens your page in Bierdeckel, taps “Sync by QR code” → “Scan their code” and scans this. Then you scan theirs.":
@@ -502,6 +506,17 @@ function requestCards() {
     h("div", { class: "actions" }, h("button", { class: "primary", onclick: () => acceptRequest(id) }, t("Accept")), h("button", { onclick: () => ignoreRequest(id) }, t("Ignore")))));
 }
 const IN_APP = /BierdeckelApp/.test(navigator.userAgent);
+const HAS_APP = /android/i.test(navigator.userAgent);
+const intentFor = hash => "intent://open?h=" + encodeURIComponent(hash.replace(/^#/, "")) +
+  "#Intent;scheme=bierdeckel;package=dev.bierdeckel.app;S.browser_fallback_url=" + encodeURIComponent(appUrl() + "download.html") + ";end";
+// scanned in a browser although the app is installed: hand the data to the app
+function handOver(hash) {
+  app.replaceChildren(h("div", { class: "card attn" },
+    h("p", {}, t("Open this in the Bierdeckel app so it lands in your book.")),
+    h("div", { class: "actions" }, h("a", { class: "button primary", href: intentFor(hash) }, t("Open in app")),
+      h("button", { onclick: () => { location.hash = hash; location.reload(); } }, t("Use in the browser instead")))));
+  setTimeout(() => { location.href = intentFor(hash); }, 150);
+}
 const FIRST_HASH = location.hash.slice(1);
 function installHint() {
   if (IN_APP) return null;
@@ -602,7 +617,7 @@ function addView() {
     h("h2", {}, t("Your code")),
     qrSvg(link),
     h("div", { class: "actions", style: "justify-content:center" },
-      h("button", { class: "primary", onclick: startScan }, t("Scan friend's code")),
+      h("button", { class: "primary", onclick: startScan }, t("Scan friend's code")), lensButton(),
       h("button", { onclick: async () => { try { await navigator.clipboard.writeText(link); toast(t("Link copied. Send it on WhatsApp.")); } catch { paste.value = link; paste.select(); } } }, t("Copy my link"))),
     h("section", { class: "card" }, h("label", {}, t("Got a link from a friend instead?"), paste),
       h("button", { onclick: async () => { const c = await parsePair(paste.value); c ? addContact(c) : toast(t("That link is not a Bierdeckel invite.")); } }, t("Connect"))),
@@ -670,7 +685,7 @@ async function packFor(f) {
   const total = send.length;
   let b = await z(JSON.stringify({ ...base, recs: send }));
   while (b.length > QR_MAX && send.length) { send = send.slice(0, Math.max(0, Math.floor(send.length * 0.7))); b = await z(JSON.stringify({ ...base, recs: send })); }
-  return { code: "BD2:" + b, sent: send.length, total };
+  return { code: appUrl() + "#s=" + b, sent: send.length, total };
 }
 async function receiveSync(b) {
   let o;
@@ -709,9 +724,12 @@ function syncView() {
     h("p", { class: "sub", style: "text-align:center" }, sy.sent >= sy.total
       ? t("This one code holds your whole tab with {name}.", { name: c.name })
       : t("This one code holds the {n} newest changes. Scan again afterwards for the older ones.", { n: sy.sent })),
-    h("div", { class: "actions", style: "justify-content:center" }, h("button", { class: "primary", onclick: startScan }, t("Scan their code"))),
+    h("div", { class: "actions", style: "justify-content:center" }, h("button", { class: "primary", onclick: startScan }, t("Scan their code")),
+      lensButton()),
   ];
 }
+const LENS = BT && typeof BT.openLens === "function";
+const lensButton = () => LENS ? h("button", { onclick: () => { if (!BT.openLens()) toast(t("Google Lens was not found on this phone.")); } }, t("Scan with Google Lens")) : null;
 
 // ---------- QR scanner (overlay, outside the re-rendered app) ----------
 async function startScan() {
@@ -733,7 +751,8 @@ async function startScan() {
       canvas.width = w * s; canvas.height = hgt * s;
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       const code = jsQR(ctx.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height, { inversionAttempts: "dontInvert" });
-      if (code && code.data.startsWith("BD2:")) { stop(); return receiveSync(code.data.slice(4)); }
+      const sm = code && String(code.data).match(/[#&]s=([A-Za-z0-9_-]+)/);
+      if (sm) { stop(); return receiveSync(sm[1]); }
       else if (code) {
         const c = await parsePair(code.data);
         if (c) { stop(); return addContact(c); }
@@ -757,6 +776,14 @@ function render() {
 
 // ---------- boot ----------
 async function handleHash() {
+  const sm = location.hash.match(/^#s=([A-Za-z0-9_-]+)/);
+  if (sm) {
+    const data = sm[1];
+    history.replaceState(null, "", appUrl());
+    if (!IN_APP && HAS_APP) return handOver("#s=" + data);
+    if (!S) return toast(t("Set up Bierdeckel first, then scan again."));
+    return receiveSync(data);
+  }
   if (!location.hash.startsWith("#pair=")) return;
   const c = await parsePair(location.hash);
   history.replaceState(null, "", appUrl());

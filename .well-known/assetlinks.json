@@ -1,0 +1,5 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": { "namespace": "android_app", "package_name": "dev.bierdeckel.app",
+    "sha256_cert_fingerprints": ["A9:B2:14:02:F2:04:FC:91:9F:4A:E3:5F:9F:ED:B1:0A:66:E1:DA:B0:09:AA:05:79:07:62:9D:68:1E:90:DE:F7"] }
+}]

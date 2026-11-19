@@ -183,6 +183,26 @@ public class MainActivity extends Activity {
             return true;
         }
         @JavascriptInterface public void bleClose(String id) { runOnUiThread(() -> ble.close(id)); }
+
+        /** Open Google Lens (or whatever scanner the phone has) to read a code. It opens the link itself. */
+        @JavascriptInterface public boolean openLens() {
+            String[][] targets = {
+                {"com.google.ar.lens", "com.google.vr.apps.ornament.app.lens.LensLauncherActivity"},
+                {"com.google.android.googlequicksearchbox", "com.google.android.apps.search.lens.LensExportedActivity"},
+                {"com.google.android.googlequicksearchbox", "com.google.android.apps.gsa.queryentry.QueryEntryActivity"},
+            };
+            for (String[] t : targets) {
+                Intent i = new Intent(Intent.ACTION_MAIN).setClassName(t[0], t[1]).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                if (getPackageManager().resolveActivity(i, 0) != null) { try { startActivity(i); return true; } catch (Exception e) { } }
+            }
+            // any installed QR/barcode scanner
+            Intent scan = new Intent("com.google.zxing.client.android.SCAN").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (getPackageManager().resolveActivity(scan, 0) != null) { try { startActivity(scan); return true; } catch (Exception e) { } }
+            // last resort: the camera app, where most phones read codes too
+            Intent cam = new Intent("android.media.action.STILL_IMAGE_CAMERA").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (getPackageManager().resolveActivity(cam, 0) != null) { try { startActivity(cam); return true; } catch (Exception e) { } }
+            return false;
+        }
         @JavascriptInterface public void save(String name, String b64) {
             try {
                 ContentValues v = new ContentValues();
