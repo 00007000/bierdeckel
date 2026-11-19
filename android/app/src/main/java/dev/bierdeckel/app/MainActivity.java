@@ -5,6 +5,7 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.ContentValues;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Bundle;
@@ -29,6 +30,7 @@ public class MainActivity extends Activity {
     BleLink ble;
     String bleMe; List<String> bleFriends = new ArrayList<>();
     boolean bleWanted, bleAsked;
+    boolean freshenPending;
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
@@ -42,7 +44,20 @@ public class MainActivity extends Activity {
         s.setMediaPlaybackRequiresUserGesture(false);
         s.setUserAgentString(s.getUserAgentString() + " BierdeckelApp/1");
         web.addJavascriptInterface(new Bridge(), "BierdeckelAndroid");
+        // After installing a new version, throw away the cached web part once (never the book itself)
+        try {
+            SharedPreferences sp = getSharedPreferences("app", MODE_PRIVATE);
+            int code = getPackageManager().getPackageInfo(getPackageName(), 0).versionCode;
+            if (sp.getInt("built", -1) != code) { freshenPending = true; sp.edit().putInt("built", code).apply(); web.clearCache(true); }
+        } catch (Exception e) { }
         web.setWebViewClient(new WebViewClient() {
+            @Override public void onPageFinished(WebView v, String url) {
+                if (!freshenPending) return;
+                freshenPending = false;
+                v.evaluateJavascript(
+                    "(async()=>{try{for(const r of await navigator.serviceWorker.getRegistrations())await r.unregister();"
+                  + "for(const k of await caches.keys())await caches.delete(k);}catch(e){}location.reload(true);})()", null);
+            }
             @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
                 Uri u = r.getUrl();
                 if (u.toString().startsWith(HOME)) return false;
