@@ -72,3 +72,5 @@ video.scan { width: 100%; border-radius: 12px; background: #000 }
 .mat { display: block; filter: drop-shadow(0 4px 10px rgb(0 0 0 / .18)) }
 .mat.big { width: min(72vw, 300px); margin: 8px auto 4px; transform: rotate(-6deg) }
 .mat.small { width: 76px; transform: rotate(8deg); flex: none }
+.dl { width: 100%; justify-content: center; font-size: 1.05rem; min-height: 52px }
+a { color: var(--accent) }

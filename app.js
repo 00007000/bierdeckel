@@ -93,6 +93,16 @@ const DE = {
   "Let them scan this code first. It opens the download page. Once the app is installed, they tap “Add friend” → “Scan friend's code” and scan your code above.":
     "Lass ihn zuerst diesen Code scannen. Er öffnet die Download-Seite. Sobald die App installiert ist, tippt er auf „Freund hinzufügen“ → „Code des Freundes scannen“ und scannt deinen Code oben.",
   "Your code": "Dein Code",
+  "{name} is now connected with you.": "{name} ist jetzt mit dir verbunden.",
+  "{name} invites you to Bierdeckel": "{name} lädt dich zu Bierdeckel ein",
+  "Your shared tab: who lent whom what. Stored only on your phones.": "Euer gemeinsamer Deckel: wer wem was geliehen hat. Nur auf euren Handys gespeichert.",
+  "Install Bierdeckel": "Bierdeckel installieren",
+  "Now open the downloaded file and tap “Install”, then “Open”. The app connects you with {name} by itself.":
+    "Jetzt die heruntergeladene Datei öffnen, auf „Installieren“ und dann „Öffnen“ tippen. Die App verbindet dich von selbst mit {name}.",
+  "Already have the app? Open it": "App schon installiert? Öffnen",
+  "Use in the browser instead": "Lieber im Browser nutzen",
+  "Your friend scans this code with their phone camera. Without the app, they tap “Install Bierdeckel” and are connected with you automatically.":
+    "Dein Freund scannt diesen Code mit der Handykamera. Ohne App tippt er auf „Bierdeckel installieren“ und ist danach automatisch mit dir verbunden.",
   "Your friend scans this inside their Bierdeckel app (“Add friend” → “Scan friend's code”).": "Dein Freund scannt ihn in seiner Bierdeckel-App („Freund hinzufügen“ → „Code des Freundes scannen“).",
   "Opens the download page. No connection to you.": "Öffnet die Download-Seite, ohne Verbindung zu dir.", "Language": "Sprache",
   "Camera not available. Use your phone camera app or paste the link.": "Kamera nicht verfügbar. Nutze die Kamera-App deines Handys oder füge den Link ein.",
@@ -156,20 +166,21 @@ const go = (view, friend) => { V.view = view; V.friend = friend || null; V.err =
 
 // ---------- pairing links ----------
 const appUrl = () => location.origin + location.pathname.replace(/[^/]*$/, "");
-const pairLink = () => appUrl() + "#pair=" + L.b64u(new TextEncoder().encode(JSON.stringify({ id: S.me.id, name: S.me.name, pub: S.me.pub })));
+function myInv() { if (!S.me.inv) { S.me.inv = L.b64u(crypto.getRandomValues(new Uint8Array(9))); save(); } return S.me.inv; }
+const pairLink = () => appUrl() + "#pair=" + L.b64u(new TextEncoder().encode(JSON.stringify({ id: S.me.id, name: S.me.name, pub: S.me.pub, inv: myInv() })));
 async function parsePair(text) {
   try {
     const m = String(text).match(/pair=([A-Za-z0-9_-]+)/);
     const o = JSON.parse(new TextDecoder().decode(L.unb64u(m ? m[1] : String(text).trim())));
     if (!o.id || !o.pub || (await L.idFromPub(o.pub)) !== o.id) return null;
-    return { id: o.id, name: String(o.name || "Friend").slice(0, 40), pub: o.pub };
+    return { id: o.id, name: String(o.name || "Friend").slice(0, 40), pub: o.pub, inv: typeof o.inv === "string" ? o.inv.slice(0, 40) : undefined };
   } catch { return null; }
 }
 async function addContact(c) {
   if (c.id === S.me.id) return toast(t("That is your own code. Scan your friend's code instead."));
   const old = S.contacts[c.id];
   if (old && old.pub !== c.pub) return toast(t("This code does not match the friend you already have."));
-  S.contacts[c.id] = { ...(old || {}), name: c.name, pub: c.pub, addedAt: (old && old.addedAt) || Date.now() };
+  S.contacts[c.id] = { ...(old || {}), name: c.name, pub: c.pub, inv: c.inv || (old && old.inv), addedAt: (old && old.addedAt) || Date.now() };
   delete S.requests[c.id];
   await save();
   connect(c.id);
@@ -216,7 +227,7 @@ function connect(id) {
   setTimeout(() => dialing.delete(id), 15000);
 }
 const connectAll = () => Object.keys(S.contacts).forEach(connect);
-function hello(c) { c.send({ t: "hello", id: S.me.id, name: S.me.name, pub: S.me.pub }); }
+function hello(c) { const k = S.contacts[String(c.peer).slice(PEER_PREFIX.length)]; c.send({ t: "hello", id: S.me.id, name: S.me.name, pub: S.me.pub, inv: k && k.inv }); }
 function sendSync(id) { const c = conns.get(id); if (c) c.send({ t: "sync", recs: recordsWith(id) }); }
 function push(rec) { const c = conns.get(otherOf(rec)); if (c) c.send({ t: "sync", recs: [rec] }); }
 
@@ -244,6 +255,13 @@ async function onMessage(c, ctx, m) {
     const name = String(m.name || "Friend").slice(0, 40);
     const known = S.contacts[id];
     if (known && known.pub !== m.pub) return c.close();
+    if (!known && S.me.inv && m.inv === S.me.inv) {
+      S.contacts[id] = { name, pub: m.pub, addedAt: Date.now() };
+      delete S.requests[id];
+      bind(c, id); hello(c); await save();
+      toast(t("{name} is now connected with you.", { name }));
+      render(); return;
+    }
     if (!known) {
       S.requests[id] = { name, pub: m.pub, at: Date.now() };
       pendingReq.set(id, c);
@@ -390,7 +408,26 @@ function correctionBox(r) {
     h("button", { class: "link", onclick: () => { box.hidden = !box.hidden; } }, t("Propose a different amount")), box);
 }
 
+function inviteLanding() {
+  const apk = appUrl() + "bierdeckel.apk", inviteLink = appUrl() + "#" + FIRST_HASH;
+  const open = "intent://open?h=" + encodeURIComponent(FIRST_HASH) + "#Intent;scheme=bierdeckel;package=dev.bierdeckel.app;S.browser_fallback_url=" + encodeURIComponent(apk) + ";end";
+  const install = async () => {
+    try { await navigator.clipboard.writeText(inviteLink); } catch { }
+    V.started = true; render();
+    location.href = apk;
+  };
+  return [
+    h("img", { class: "mat big", src: "mat.svg", alt: "" }),
+    h("header", {}, h("div", { class: "eyebrow" }, "Bierdeckel"), h("h1", {}, t("{name} invites you to Bierdeckel", { name: V.pendingPair.name })),
+      h("p", { class: "sub" }, t("Your shared tab: who lent whom what. Stored only on your phones."))),
+    h("section", { class: "card" }, h("button", { class: "primary dl", onclick: install }, t("Install Bierdeckel")),
+      V.started ? h("p", { class: "sub" }, t("Now open the downloaded file and tap “Install”, then “Open”. The app connects you with {name} by itself.", { name: V.pendingPair.name })) : null),
+    h("p", { class: "sub" }, h("a", { href: open }, t("Already have the app? Open it")), " · ",
+      h("a", { href: "#", onclick: e => { e.preventDefault(); V.web = true; render(); } }, t("Use in the browser instead"))),
+  ];
+}
 function setupView() {
+  if (!IN_APP && !V.web && V.pendingPair && /android/i.test(navigator.userAgent)) return inviteLanding();
   const name = h("input", { id: "setup-name", autocomplete: "given-name", placeholder: t("e.g. Alex"), maxlength: "40" });
   const create = async () => {
     if (!name.value.trim()) { V.err = t("Enter the name your friends know you by."); return render(); }
@@ -510,15 +547,12 @@ function addView() {
   return [
     h("div", {}, h("button", { class: "link", onclick: () => go("home") }, t("← Back"))),
     h("header", {}, h("h1", {}, t("Add a friend")),
-      h("p", { class: "sub" }, t("Your friend scans this inside their Bierdeckel app (“Add friend” → “Scan friend's code”)."))),
+      h("p", { class: "sub" }, t("Your friend scans this code with their phone camera. Without the app, they tap “Install Bierdeckel” and are connected with you automatically."))),
     h("h2", {}, t("Your code")),
     qrSvg(link),
     h("div", { class: "actions", style: "justify-content:center" },
       h("button", { class: "primary", onclick: startScan }, t("Scan friend's code")),
       h("button", { onclick: async () => { try { await navigator.clipboard.writeText(link); toast(t("Link copied. Send it on WhatsApp.")); } catch { paste.value = link; paste.select(); } } }, t("Copy my link"))),
-    h("section", { class: "card" }, h("h2", {}, t("Friend doesn't have the app yet?")),
-      h("p", { class: "sub" }, t("Let them scan this code first. It opens the download page. Once the app is installed, they tap “Add friend” → “Scan friend's code” and scan your code above.")),
-      qrSvg(appUrl() + "download.html")),
     h("section", { class: "card" }, h("label", {}, t("Got a link from a friend instead?"), paste),
       h("button", { onclick: async () => { const c = await parsePair(paste.value); c ? addContact(c) : toast(t("That link is not a Bierdeckel invite.")); } }, t("Connect"))),
   ];

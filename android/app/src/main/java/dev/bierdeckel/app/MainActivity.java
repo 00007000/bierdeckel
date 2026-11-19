@@ -1,6 +1,8 @@
 package dev.bierdeckel.app;
 
 import android.app.Activity;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.ContentValues;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -80,6 +82,22 @@ public class MainActivity extends Activity {
     @Override protected void onNewIntent(Intent i) {
         super.onNewIntent(i);
         if (i.getData() != null) web.loadUrl(target(i));
+    }
+
+    // The invite page copies the invite link before downloading the APK, so a fresh install connects by itself.
+    @Override public void onWindowFocusChanged(boolean has) {
+        super.onWindowFocusChanged(has);
+        if (!has) return;
+        try {
+            ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            ClipData c = cm.getPrimaryClip();
+            if (c == null || c.getItemCount() == 0 || c.getItemAt(0).getText() == null) return;
+            String t = c.getItemAt(0).getText().toString().trim();
+            int i = t.indexOf("#pair=");
+            if (!t.startsWith(HOME) || i < 0) return;
+            cm.clearPrimaryClip();
+            web.loadUrl(HOME + t.substring(i));
+        } catch (Exception e) { }
     }
 
     @Override protected void onSaveInstanceState(Bundle o) { super.onSaveInstanceState(o); web.saveState(o); }
