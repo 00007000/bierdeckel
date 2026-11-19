@@ -2,8 +2,105 @@
 // friends' phones sync directly over WebRTC (PeerJS only introduces them).
 "use strict";
 const L = window.Ledger;
-const EUR = new Intl.NumberFormat(undefined, { style: "currency", currency: "EUR" });
-const money = c => EUR.format(c / 100);
+// ---------- language: German on German phones, switchable in Settings ----------
+let LANG = (() => { try { const l = localStorage.getItem("lang"); if (l === "de" || l === "en") return l; } catch { } return /^de\b/i.test(navigator.language || "") ? "de" : "en"; })();
+const DE = {
+  "You": "Du", "you": "dir", "Friend": "Freund",
+  "pending": "offen", "accepted": "angenommen", "refused": "abgelehnt", "withdrawn": "zurückgezogen",
+  "That is your own code. Scan your friend's code instead.": "Das ist dein eigener Code. Scanne den Code deines Freundes.",
+  "This code does not match the friend you already have.": "Dieser Code passt nicht zu dem Freund, den du schon hast.",
+  "{name} added. You sync whenever both apps are open.": "{name} hinzugefügt. Ihr synchronisiert, sobald beide Apps offen sind.",
+  "Offline. Your changes are saved and sync later.": "Offline. Deine Änderungen sind gespeichert und werden später synchronisiert.",
+  "Bierdeckel is open in another tab or window. Close it to sync here.": "Bierdeckel ist in einem anderen Tab oder Fenster offen. Schließ es, um hier zu synchronisieren.",
+  "{name} {status} your change": "{name} hat deine Änderung {status}",
+  "{name} sent 1 change for you to check": "{name} hat dir 1 Änderung zum Prüfen geschickt",
+  "{name} sent {n} changes for you to check": "{name} hat dir {n} Änderungen zum Prüfen geschickt",
+  "Enter an amount above zero.": "Gib einen Betrag über null ein.",
+  "Sent to {name}": "An {name} gesendet",
+  "Saved. It reaches {name} when both apps are open.": "Gespeichert. Es erreicht {name}, sobald beide Apps offen sind.",
+  "Enter the correct amount.": "Gib den richtigen Betrag ein.",
+  "That is the same amount as before.": "Das ist derselbe Betrag wie vorher.",
+  "Was {old}, should be {new}.": "War {old}, sollte {new} sein.",
+  "Add a note saying why you refuse.": "Schreib kurz, warum du ablehnst.",
+  "owes you {amount}": "schuldet dir {amount}", "you owe {amount}": "du schuldest {amount}", "settled": "ausgeglichen",
+  "Note for {name} (needed if you refuse)": "Notiz für {name} (nötig, wenn du ablehnst)",
+  "Proposed by {name} · {date}": "Vorgeschlagen von {name} · {date}",
+  "If accepted": "Wenn angenommen", "Effect on balance": "Auswirkung auf den Saldo",
+  "{name} owes you +{amount}": "{name} schuldet dir +{amount}", "You owe +{amount}": "Du schuldest +{amount}",
+  "Note from {name}": "Notiz von {name}", "Reply from {name} · {date}": "Antwort von {name} · {date}",
+  "Accept": "Annehmen", "Refuse": "Ablehnen",
+  "Waiting for {name} to answer": "Wartet auf Antwort von {name}",
+  "Reaches {name} when both apps are open": "Erreicht {name}, sobald beide Apps offen sind",
+  "Withdraw": "Zurückziehen", "Why the amount changes": "Warum sich der Betrag ändert",
+  "Correct amount (€)": "Richtiger Betrag (€)", "Note": "Notiz", "Send correction": "Korrektur senden",
+  "Propose a different amount": "Anderen Betrag vorschlagen",
+  "e.g. Alex": "z. B. Alex", "Enter the name your friends know you by.": "Gib den Namen ein, unter dem deine Freunde dich kennen.",
+  "Your tab with friends": "Dein Deckel mit Freunden",
+  "Loans between you and your friends, stored only on your phones. Every change needs the other person's OK.":
+    "Geliehenes zwischen dir und deinen Freunden, nur auf euren Handys gespeichert. Jede Änderung braucht das OK der anderen Person.",
+  "{name} invited you. Enter your name to connect.": "{name} hat dich eingeladen. Gib deinen Namen ein, um dich zu verbinden.",
+  "Your name": "Dein Name", "Start my book": "Meinen Deckel starten",
+  " wants to connect with you.": " möchte sich mit dir verbinden.", "Ignore": "Ignorieren",
+  "Get the Bierdeckel app.": "Hol dir die Bierdeckel-App.",
+  " Download it, open the file to install it (allow your browser to install apps if asked), then come back here and tap “Open in app”.":
+    " Lade sie herunter, öffne die Datei zum Installieren (erlaube deinem Browser das Installieren von Apps, falls gefragt), komm dann hierher zurück und tippe auf „In App öffnen“.",
+  "Your invite comes along into the app.": "Deine Einladung wird in die App mitgenommen.",
+  "Download app": "App herunterladen", "Open in app": "In App öffnen",
+  "Install Bierdeckel on your home screen so it opens like an app.": "Installiere Bierdeckel auf deinem Startbildschirm, damit es sich wie eine App öffnet.",
+  "Install app": "App installieren",
+  "To install: tap the Share button in Safari, then “Add to Home Screen”.": "Zum Installieren: Tippe in Safari auf Teilen und dann auf „Zum Home-Bildschirm“.",
+  "Settings": "Einstellungen", "Hi {name}": "Hallo {name}",
+  "Friends owe you": "Freunde schulden dir", "You owe friends": "Du schuldest Freunden",
+  "Needs your answer": "Wartet auf deine Antwort", "{n} open": "{n} offen",
+  "Friends": "Freunde", "Add friend": "Freund hinzufügen", "Connected now": "Gerade verbunden",
+  "1 change pending": "1 Änderung offen", "{n} changes pending": "{n} Änderungen offen", "Not connected": "Nicht verbunden",
+  "No friends yet. Tap “Add friend” and let your friend scan the code with their phone camera.":
+    "Noch keine Freunde. Tippe auf „Freund hinzufügen“ und lass deinen Freund den Code mit der Handykamera scannen.",
+  "Waiting for friends": "Wartet auf Freunde", "{n} sent": "{n} gesendet",
+  "I lent {name} money": "Ich habe {name} Geld geliehen", "{name} lent me money": "{name} hat mir Geld geliehen",
+  "{name} paid me back": "{name} hat mir etwas zurückgezahlt", "I paid {name} back": "Ich habe {name} etwas zurückgezahlt",
+  "e.g. Concert tickets, 14 Nov": "z. B. Konzertkarten, 14. Nov.",
+  "← All friends": "← Alle Freunde", "Last synced {date}": "Zuletzt synchronisiert {date}",
+  "Not synced yet. Open the app at the same time.": "Noch nicht synchronisiert. Öffnet die App gleichzeitig.",
+  "Settled in full": "Komplett beglichen", "Record full payback": "Komplette Rückzahlung eintragen",
+  "History check": "Verlaufsprüfung", "matches": "stimmt", "differs": "weicht ab", "not checked": "nicht geprüft",
+  "After the first sync, both phones compare a fingerprint of your shared history.": "Nach der ersten Synchronisierung vergleichen beide Handys einen Fingerabdruck eures gemeinsamen Verlaufs.",
+  "1 signed entry, identical on both phones (checked {date}).": "1 signierter Eintrag, auf beiden Handys gleich (geprüft {date}).",
+  "{n} signed entries, identical on both phones (checked {date}).": "{n} signierte Einträge, auf beiden Handys gleich (geprüft {date}).",
+  "{name}'s phone has a different history. Some entry did not pass the signature check. Talk to {name} before agreeing to new changes.":
+    "Das Handy von {name} hat einen anderen Verlauf. Ein Eintrag hat die Signaturprüfung nicht bestanden. Sprich mit {name}, bevor du neuen Änderungen zustimmst.",
+  "fingerprint {fp}…": "Fingerabdruck {fp}…",
+  "Record a change": "Änderung eintragen", "{name} has to accept it before it counts.": "{name} muss sie annehmen, bevor sie zählt.",
+  "What happened": "Was ist passiert", "Amount (€)": "Betrag (€)", "Send to {name}": "An {name} senden",
+  "History": "Verlauf", "Nothing recorded with {name} yet.": "Mit {name} ist noch nichts eingetragen.",
+  "Paste your friend's link": "Link deines Freundes einfügen", "← Back": "← Zurück", "Add a friend": "Freund hinzufügen",
+  "Your friend scans this with their normal phone camera. If they don't have Bierdeckel yet, the code opens it, they install it, and you're connected.":
+    "Dein Freund scannt das mit der normalen Handykamera. Wenn er Bierdeckel noch nicht hat, öffnet der Code es, er installiert es und ihr seid verbunden.",
+  "Scan friend's code": "Code des Freundes scannen", "Link copied. Send it on WhatsApp.": "Link kopiert. Schick ihn per WhatsApp.",
+  "Copy my link": "Meinen Link kopieren", "Got a link from a friend instead?": "Stattdessen einen Link von einem Freund bekommen?",
+  "That link is not a Bierdeckel invite.": "Das ist keine Bierdeckel-Einladung.", "Connect": "Verbinden",
+  "That file is not a Bierdeckel backup.": "Diese Datei ist kein Bierdeckel-Backup.",
+  "Your name (friends see it after the next sync)": "Dein Name (Freunde sehen ihn nach der nächsten Synchronisierung)",
+  "Name saved": "Name gespeichert", "Save name": "Name speichern", "Backup": "Backup",
+  "Your book only exists on this phone and on your friends' phones. Save a backup now and then. The file contains your secret key, so keep it private.":
+    "Dein Deckel existiert nur auf diesem Handy und auf den Handys deiner Freunde. Speichere ab und zu ein Backup. Die Datei enthält deinen geheimen Schlüssel, also halte sie privat.",
+  "Save backup file": "Backup-Datei speichern", "Restore from a backup file": "Aus einer Backup-Datei wiederherstellen",
+  "Replace this phone's book with the backup of {name}: {f} friends, {e} entries?": "Den Deckel auf diesem Handy durch das Backup von {name} ersetzen: {f} Freunde, {e} Einträge?",
+  "Replace": "Ersetzen", "Cancel": "Abbrechen", "Share the app": "App teilen",
+  "Opens Bierdeckel without connecting to you.": "Öffnet Bierdeckel, ohne sich mit dir zu verbinden.",
+  "Your ID {id}": "Deine ID {id}", "Language": "Sprache",
+  "Camera not available. Use your phone camera app or paste the link.": "Kamera nicht verfügbar. Nutze die Kamera-App deines Handys oder füge den Link ein.",
+  "Point at your friend's code": "Auf den Code deines Freundes richten",
+  "That invite link is broken.": "Dieser Einladungslink ist kaputt.",
+  "This browser blocks storage. Open Bierdeckel in your normal browser, not a private window.":
+    "Dieser Browser blockiert den Speicher. Öffne Bierdeckel in deinem normalen Browser, nicht im privaten Fenster.",
+};
+const t = (k, v) => { let x = LANG === "de" && DE[k] != null ? DE[k] : k; for (const n in v || {}) x = x.split("{" + n + "}").join(v[n]); return x; };
+const LOCALE = () => LANG === "de" ? "de-DE" : undefined;
+document.documentElement.lang = LANG;
+let EUR = new Intl.NumberFormat(LOCALE(), { style: "currency", currency: "EUR" });
+function setLang(l) { LANG = l; try { localStorage.setItem("lang", l); } catch { } document.documentElement.lang = l; EUR = new Intl.NumberFormat(LOCALE(), { style: "currency", currency: "EUR" }); render(); }
+const money = c => EUR.format((c / 100) || 0);
 const app = document.getElementById("app");
 const PEER_PREFIX = "fdb-";
 
@@ -41,12 +138,12 @@ function toast(msg) {
   document.body.append(t); setTimeout(() => t.remove(), 3200);
 }
 function setNet(msg) { const n = document.getElementById("net"); n.textContent = msg; n.hidden = !msg; }
-const nameOf = id => id === S.me.id ? "You" : (S.contacts[id] && S.contacts[id].name) || (S.requests[id] && S.requests[id].name) || "Friend";
-const nameLc = id => id === S.me.id ? "you" : nameOf(id);
+const nameOf = id => id === S.me.id ? t("You") : (S.contacts[id] && S.contacts[id].name) || (S.requests[id] && S.requests[id].name) || t("Friend");
+const nameLc = id => id === S.me.id ? t("you") : nameOf(id);
 const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
 const otherOf = r => r.p.a === S.me.id ? r.p.b : r.p.a;
 const recordsWith = id => Object.values(S.records).filter(r => otherOf(r) === id && (r.p.a === S.me.id || r.p.b === S.me.id));
-const when = t => t ? new Date(t).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "";
+const when = t => t ? new Date(t).toLocaleDateString(LOCALE(), { day: "numeric", month: "short", year: "numeric" }) : "";
 const cents = s => Math.round(parseFloat(String(s).replace(",", ".")) * 100);
 const initial = id => h("div", { class: "initial", "aria-hidden": "true" }, (nameOf(id)[0] || "?").toUpperCase(), conns.has(id) ? h("span", { class: "dot" }) : null);
 const go = (view, friend) => { V.view = view; V.friend = friend || null; V.err = ""; render(); window.scrollTo(0, 0); };
@@ -63,14 +160,14 @@ async function parsePair(text) {
   } catch { return null; }
 }
 async function addContact(c) {
-  if (c.id === S.me.id) return toast("That is your own code. Scan your friend's code instead.");
+  if (c.id === S.me.id) return toast(t("That is your own code. Scan your friend's code instead."));
   const old = S.contacts[c.id];
-  if (old && old.pub !== c.pub) return toast("This code does not match the friend you already have.");
+  if (old && old.pub !== c.pub) return toast(t("This code does not match the friend you already have."));
   S.contacts[c.id] = { ...(old || {}), name: c.name, pub: c.pub, addedAt: (old && old.addedAt) || Date.now() };
   delete S.requests[c.id];
   await save();
   connect(c.id);
-  toast(`${c.name} added. You sync whenever both apps are open.`);
+  toast(t("{name} added. You sync whenever both apps are open.", { name: c.name }));
   go("friend", c.id);
 }
 qrcode.stringToBytes = qrcode.stringToBytesFuncs["UTF-8"];
@@ -93,11 +190,11 @@ function startPeer() {
   peer = new Peer(PEER_PREFIX + S.me.id, { debug: 0, config: { iceServers: [{ urls: ["stun:stun.l.google.com:19302", "stun:stun.cloudflare.com:3478"] }] } });
   peer.on("open", () => { setNet(""); connectAll(); });
   peer.on("connection", c => setupConn(c));
-  peer.on("disconnected", () => setNet("Offline. Your changes are saved and sync later."));
+  peer.on("disconnected", () => setNet(t("Offline. Your changes are saved and sync later.")));
   peer.on("error", e => {
     if (e.type === "peer-unavailable") return; // friend's app is closed: normal
-    if (e.type === "unavailable-id") setNet("Bierdeckel is open in another tab or window. Close it to sync here.");
-    else if (["network", "server-error", "socket-error", "socket-closed", "disconnected"].includes(e.type)) setNet("Offline. Your changes are saved and sync later.");
+    if (e.type === "unavailable-id") setNet(t("Bierdeckel is open in another tab or window. Close it to sync here."));
+    else if (["network", "server-error", "socket-error", "socket-closed", "disconnected"].includes(e.type)) setNet(t("Offline. Your changes are saved and sync later."));
   });
 }
 function keepAlive() {
@@ -182,12 +279,12 @@ async function absorb(id, recs) {
     if (res.changed) {
       if (!before && rec.p.b === S.me.id && L.effective(rec) === "pending") fresh++;
       if (before && rec.p.a === S.me.id && L.effective(before) === "pending" && L.effective(res.rec) !== "pending")
-        toast(`${nameOf(id)} ${L.effective(res.rec)} your change`);
+        toast(t("{name} {status} your change", { name: nameOf(id), status: t(L.effective(res.rec)) }));
       S.records[rec.p.id] = res.rec; changed = true;
     }
   }
   if (changed) await save();
-  if (fresh) toast(`${nameOf(id)} sent ${fresh} change${fresh > 1 ? "s" : ""} for you to check`);
+  if (fresh) toast(t(fresh > 1 ? "{name} sent {n} changes for you to check" : "{name} sent 1 change for you to check", { name: nameOf(id), n: fresh }));
   return changed;
 }
 
@@ -195,22 +292,22 @@ async function absorb(id, recs) {
 async function store1(rec) { S.records[rec.p.id] = rec; await save(); push(rec); render(); }
 async function propose(f, kind, amount, note) {
   const a = cents(amount);
-  if (!(a > 0)) { V.err = "Enter an amount above zero."; return render(); }
+  if (!(a > 0)) { V.err = t("Enter an amount above zero."); return render(); }
   V.err = "";
   await store1(await L.propose(S.me, f, kind, a, note.trim()));
   ["new-amt", "new-note"].forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
-  toast(conns.has(f) ? `Sent to ${nameOf(f)}` : `Saved. It reaches ${nameOf(f)} when both apps are open.`);
+  toast(conns.has(f) ? t("Sent to {name}", { name: nameOf(f) }) : t("Saved. It reaches {name} when both apps are open.", { name: nameOf(f) }));
 }
 async function proposeCorrection(rec, amount, note) {
   const n = cents(amount), diff = n - rec.p.amount;
-  if (isNaN(n) || n < 0) { V.err = "Enter the correct amount."; return render(); }
-  if (diff === 0) { V.err = "That is the same amount as before."; return render(); }
+  if (isNaN(n) || n < 0) { V.err = t("Enter the correct amount."); return render(); }
+  if (diff === 0) { V.err = t("That is the same amount as before."); return render(); }
   V.err = "";
   const extra = { corrects: rec.p.id, cred: diff > 0 ? rec.p.cred : rec.p.debt, debt: diff > 0 ? rec.p.debt : rec.p.cred };
-  await store1(await L.propose(S.me, otherOf(rec), "correction", Math.abs(diff), `Was ${money(rec.p.amount)}, should be ${money(n)}. ${note.trim()}`, extra));
+  await store1(await L.propose(S.me, otherOf(rec), "correction", Math.abs(diff), t("Was {old}, should be {new}.", { old: money(rec.p.amount), new: money(n) }) + " " + note.trim(), extra));
 }
 async function answer(rec, status, note) {
-  if (status === "refused" && !note.trim()) { V.err = "Add a note saying why you refuse."; return render(); }
+  if (status === "refused" && !note.trim()) { V.err = t("Add a note saying why you refuse."); return render(); }
   V.err = "";
   await store1(await L.respond(S.me, rec, status, note.trim()));
 }
@@ -226,7 +323,20 @@ async function acceptRequest(id) {
 async function ignoreRequest(id) { delete S.requests[id]; const c = pendingReq.get(id); pendingReq.delete(id); if (c) c.close(); await save(); render(); }
 
 // ---------- views ----------
+function describeDe(p) {
+  const A = money(p.amount), me = S.me.id, n = id => nameOf(id);
+  const lend = (x, y) => x === me ? `Du hast ${n(y)} ${A} geliehen` : `${n(x)} hat dir ${A} geliehen`;
+  const pay = (x, y) => x === me ? `Du hast ${n(y)} ${A} zurückgezahlt` : `${n(x)} hat dir ${A} zurückgezahlt`;
+  switch (p.kind) {
+    case "lent": return lend(p.a, p.b);
+    case "borrowed": return lend(p.b, p.a);
+    case "theyPaid": return pay(p.b, p.a);
+    case "iPaid": return pay(p.a, p.b);
+    default: return p.debt === me ? `Korrektur: Du schuldest ${n(p.cred)} ${A} mehr` : `Korrektur: ${n(p.debt)} schuldet dir ${A} mehr`;
+  }
+}
 function describe(r) {
+  if (LANG === "de") return describeDe(r.p);
   const p = r.p, P = nameLc(p.a), C = nameLc(p.b), A = money(p.amount);
   switch (p.kind) {
     case "lent": return `${cap(P)} lent ${C} ${A}`;
@@ -237,66 +347,67 @@ function describe(r) {
   }
 }
 function balanceLabel(v) {
-  if (v > 0) return h("span", { class: "num plus" }, `owes you ${money(v)}`);
-  if (v < 0) return h("span", { class: "num minus" }, `you owe ${money(-v)}`);
-  return h("span", { class: "num zero" }, "settled");
+  if (v > 0) return h("span", { class: "num plus" }, t("owes you {amount}", { amount: money(v) }));
+  if (v < 0) return h("span", { class: "num minus" }, t("you owe {amount}", { amount: money(-v) }));
+  return h("span", { class: "num zero" }, t("settled"));
 }
 
 function entryCard(r) {
   const st = L.effective(r), mine = st === "pending" && r.p.b === S.me.id, sent = st === "pending" && r.p.a === S.me.id;
   const f = otherOf(r);
-  const reply = h("textarea", { id: "reply-" + r.p.id, placeholder: `Note for ${nameOf(r.p.a)} (needed if you refuse)` });
+  const reply = h("textarea", { id: "reply-" + r.p.id, placeholder: t("Note for {name} (needed if you refuse)", { name: nameOf(r.p.a) }) });
   const toMe = r.p.cred === S.me.id;
   return h("div", { class: "card" + (mine ? " attn" : "") },
     h("div", { class: "row" }, initial(f),
       h("div", { class: "grow" }, h("div", { class: "who" }, describe(r)),
-        h("div", { class: "sub" }, `Proposed by ${nameLc(r.p.a)} · ${when(r.p.at)}`)),
-      h("span", { class: "pill " + st }, st)),
-    st === "refused" || st === "withdrawn" ? null : h("div", { class: "row" }, h("span", { class: "sub grow" }, st === "pending" ? "If accepted" : "Effect on balance"),
-      h("span", { class: "num " + (toMe ? "plus" : "minus") }, toMe ? `${nameOf(f)} owes you +${money(r.p.amount)}` : `You owe +${money(r.p.amount)}`)),
-    r.p.note ? h("div", { class: "note" }, h("b", {}, `Note from ${nameLc(r.p.a)}`), r.p.note) : null,
-    r.r && r.r.note ? h("div", { class: "note" }, h("b", {}, `Reply from ${nameLc(r.p.b)} · ${when(r.r.at)}`), r.r.note) : null,
+        h("div", { class: "sub" }, t("Proposed by {name} · {date}", { name: nameLc(r.p.a), date: when(r.p.at) }))),
+      h("span", { class: "pill " + st }, t(st))),
+    st === "refused" || st === "withdrawn" ? null : h("div", { class: "row" }, h("span", { class: "sub grow" }, st === "pending" ? t("If accepted") : t("Effect on balance")),
+      h("span", { class: "num " + (toMe ? "plus" : "minus") }, toMe ? t("{name} owes you +{amount}", { name: nameOf(f), amount: money(r.p.amount) }) : t("You owe +{amount}", { amount: money(r.p.amount) }))),
+    r.p.note ? h("div", { class: "note" }, h("b", {}, t("Note from {name}", { name: nameLc(r.p.a) })), r.p.note) : null,
+    r.r && r.r.note ? h("div", { class: "note" }, h("b", {}, t("Reply from {name} · {date}", { name: nameLc(r.p.b), date: when(r.r.at) })), r.r.note) : null,
     mine ? reply : null,
     mine ? h("div", { class: "actions" },
-      h("button", { class: "primary", onclick: () => answer(r, "accepted", reply.value) }, "Accept"),
-      h("button", { class: "danger", onclick: () => answer(r, "refused", reply.value) }, "Refuse")) : null,
-    sent ? h("div", { class: "row" }, h("span", { class: "sub grow" }, conns.has(f) ? `Waiting for ${nameOf(f)} to answer` : `Reaches ${nameOf(f)} when both apps are open`),
-      h("button", { onclick: () => withdraw(r) }, "Withdraw")) : null,
+      h("button", { class: "primary", onclick: () => answer(r, "accepted", reply.value) }, t("Accept")),
+      h("button", { class: "danger", onclick: () => answer(r, "refused", reply.value) }, t("Refuse"))) : null,
+    sent ? h("div", { class: "row" }, h("span", { class: "sub grow" }, conns.has(f) ? t("Waiting for {name} to answer", { name: nameOf(f) }) : t("Reaches {name} when both apps are open", { name: nameOf(f) })),
+      h("button", { onclick: () => withdraw(r) }, t("Withdraw"))) : null,
     st === "accepted" && r.p.kind !== "correction" ? correctionBox(r) : null);
 }
 function correctionBox(r) {
   const box = h("div", { class: "form", hidden: true });
   const amt = h("input", { id: "corr-amt-" + r.p.id, type: "number", min: "0", step: "0.01", inputmode: "decimal", value: (r.p.amount / 100).toFixed(2) });
-  const note = h("textarea", { id: "corr-note-" + r.p.id, placeholder: "Why the amount changes" });
-  box.append(h("label", {}, "Correct amount (€)", amt), h("label", { class: "full" }, "Note", note),
-    h("div", { class: "actions full" }, h("button", { class: "primary", onclick: () => proposeCorrection(r, amt.value, note.value) }, "Send correction")));
+  const note = h("textarea", { id: "corr-note-" + r.p.id, placeholder: t("Why the amount changes") });
+  box.append(h("label", {}, t("Correct amount (€)"), amt), h("label", { class: "full" }, t("Note"), note),
+    h("div", { class: "actions full" }, h("button", { class: "primary", onclick: () => proposeCorrection(r, amt.value, note.value) }, t("Send correction"))));
   return h("div", { class: "actions", style: "flex-direction:column;align-items:flex-start" },
-    h("button", { class: "link", onclick: () => { box.hidden = !box.hidden; } }, "Propose a different amount"), box);
+    h("button", { class: "link", onclick: () => { box.hidden = !box.hidden; } }, t("Propose a different amount")), box);
 }
 
 function setupView() {
-  const name = h("input", { id: "setup-name", autocomplete: "given-name", placeholder: "e.g. Alex", maxlength: "40" });
+  const name = h("input", { id: "setup-name", autocomplete: "given-name", placeholder: t("e.g. Alex"), maxlength: "40" });
   const create = async () => {
-    if (!name.value.trim()) { V.err = "Enter the name your friends know you by."; return render(); }
+    if (!name.value.trim()) { V.err = t("Enter the name your friends know you by."); return render(); }
     S = { me: await L.createIdentity(name.value.trim()), contacts: {}, requests: {}, records: {} };
     await save(); startPeer();
     if (V.pendingPair) { const p = V.pendingPair; V.pendingPair = null; return addContact(p); }
     go("add");
   };
   return [
-    h("header", {}, h("div", { class: "eyebrow" }, "Bierdeckel"), h("h1", {}, "Your tab with friends"),
-      h("p", { class: "sub" }, "Loans between you and your friends, stored only on your phones. Every change needs the other person's OK.")),
-    V.pendingPair ? h("p", { class: "card" }, `${V.pendingPair.name} invited you. Enter your name to connect.`) : null,
+    h("img", { class: "mat big", src: "mat.svg", alt: "" }),
+    h("header", {}, h("div", { class: "eyebrow" }, "Bierdeckel"), h("h1", {}, t("Your tab with friends")),
+      h("p", { class: "sub" }, t("Loans between you and your friends, stored only on your phones. Every change needs the other person's OK."))),
+    V.pendingPair ? h("p", { class: "card" }, t("{name} invited you. Enter your name to connect.", { name: V.pendingPair.name })) : null,
     installHint(),
     V.err ? h("p", { class: "err" }, V.err) : null,
-    h("section", { class: "card" }, h("label", {}, "Your name", name), h("button", { class: "primary", onclick: create }, "Start my book")),
+    h("section", { class: "card" }, h("label", {}, t("Your name"), name), h("button", { class: "primary", onclick: create }, t("Start my book"))),
   ];
 }
 
-// Friend requests show on every screen: the person is usually still on "Add a friend" while their friend scans.
+// Friend requests show on every screen: the person is usually still on t("Add a friend") while their friend scans.
 function requestCards() {
-  return Object.entries(S.requests).map(([id, r]) => h("div", { class: "card attn" }, h("p", {}, h("b", {}, r.name), " wants to connect with you."),
-    h("div", { class: "actions" }, h("button", { class: "primary", onclick: () => acceptRequest(id) }, "Accept"), h("button", { onclick: () => ignoreRequest(id) }, "Ignore"))));
+  return Object.entries(S.requests).map(([id, r]) => h("div", { class: "card attn" }, h("p", {}, h("b", {}, r.name), t(" wants to connect with you.")),
+    h("div", { class: "actions" }, h("button", { class: "primary", onclick: () => acceptRequest(id) }, t("Accept")), h("button", { onclick: () => ignoreRequest(id) }, t("Ignore")))));
 }
 const IN_APP = /BierdeckelApp/.test(navigator.userAgent);
 const FIRST_HASH = location.hash.slice(1);
@@ -307,15 +418,15 @@ function installHint() {
     const open = "intent://open" + (FIRST_HASH ? "?h=" + encodeURIComponent(FIRST_HASH) : "") +
       "#Intent;scheme=bierdeckel;package=dev.bierdeckel.app;S.browser_fallback_url=" + encodeURIComponent(apk) + ";end";
     return h("div", { class: "card attn" },
-      h("p", {}, h("b", {}, "Get the Bierdeckel app."), " Download it, open the file to install it (allow your browser to install apps if asked), then come back here and tap “Open in app”."),
-      FIRST_HASH ? h("p", { class: "sub" }, "Your invite comes along into the app.") : null,
-      h("div", { class: "actions" }, h("a", { class: "button primary", href: apk, download: "Bierdeckel.apk" }, "Download app"), h("a", { class: "button", href: open }, "Open in app")));
+      h("p", {}, h("b", {}, t("Get the Bierdeckel app.")), t(" Download it, open the file to install it (allow your browser to install apps if asked), then come back here and tap “Open in app”.")),
+      FIRST_HASH ? h("p", { class: "sub" }, t("Your invite comes along into the app.")) : null,
+      h("div", { class: "actions" }, h("a", { class: "button primary", href: apk, download: "Bierdeckel.apk" }, t("Download app")), h("a", { class: "button", href: open }, t("Open in app"))));
   }
   const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
   if (standalone) return null;
-  if (V.install) return h("div", { class: "card attn" }, h("p", {}, "Install Bierdeckel on your home screen so it opens like an app."),
-    h("div", { class: "actions" }, h("button", { class: "primary", onclick: async () => { V.install.prompt(); await V.install.userChoice; V.install = null; render(); } }, "Install app")));
-  if (/iphone|ipad|ipod/i.test(navigator.userAgent)) return h("p", { class: "card sub" }, "To install: tap the Share button in Safari, then “Add to Home Screen”.");
+  if (V.install) return h("div", { class: "card attn" }, h("p", {}, t("Install Bierdeckel on your home screen so it opens like an app.")),
+    h("div", { class: "actions" }, h("button", { class: "primary", onclick: async () => { V.install.prompt(); await V.install.userChoice; V.install = null; render(); } }, t("Install app"))));
+  if (/iphone|ipad|ipod/i.test(navigator.userAgent)) return h("p", { class: "card sub" }, t("To install: tap the Share button in Safari, then “Add to Home Screen”."));
   return null;
 }
 
@@ -329,26 +440,26 @@ function homeView() {
   const waiting = all.filter(r => L.effective(r) === "pending" && r.p.a === S.me.id).sort((a, b) => b.p.at - a.p.at);
   ids.sort((a, b) => Math.abs(bal[b]) - Math.abs(bal[a]) || nameOf(a).localeCompare(nameOf(b)));
   return [
-    h("header", {}, h("div", { class: "topbar" }, h("div", { class: "eyebrow" }, "Bierdeckel"), h("button", { class: "link", onclick: () => go("settings") }, "Settings")),
-      h("h1", {}, `Hi ${S.me.name}`)),
+    h("header", {}, h("div", { class: "topbar" }, h("div", { class: "eyebrow" }, "Bierdeckel"), h("button", { class: "link", onclick: () => go("settings") }, t("Settings"))),
+      h("div", { class: "row" }, h("h1", { class: "grow" }, t("Hi {name}", { name: S.me.name })), h("img", { class: "mat small", src: "mat.svg", alt: "" }))),
     installHint(),
     h("div", { class: "totals" },
-      h("div", { class: "total" }, h("span", { class: "eyebrow" }, "Friends owe you"), h("span", { class: "num plus" }, money(owed))),
-      h("div", { class: "total" }, h("span", { class: "eyebrow" }, "You owe friends"), h("span", { class: "num minus" }, money(owe)))),
+      h("div", { class: "total" }, h("span", { class: "eyebrow" }, t("Friends owe you")), h("span", { class: "num plus" }, money(owed))),
+      h("div", { class: "total" }, h("span", { class: "eyebrow" }, t("You owe friends")), h("span", { class: "num minus" }, money(owe)))),
     V.err ? h("p", { class: "err" }, V.err) : null,
-    forMe.length ? h("section", {}, h("div", { class: "sec-head" }, h("h2", {}, "Needs your answer"), h("span", { class: "sub" }, `${forMe.length} open`)),
+    forMe.length ? h("section", {}, h("div", { class: "sec-head" }, h("h2", {}, t("Needs your answer")), h("span", { class: "sub" }, t("{n} open", { n: forMe.length }))),
       h("div", { class: "list" }, forMe.map(entryCard))) : null,
     h("section", {},
-      h("div", { class: "sec-head" }, h("h2", {}, "Friends"), h("button", { class: "primary", onclick: () => go("add") }, "Add friend")),
+      h("div", { class: "sec-head" }, h("h2", {}, t("Friends")), h("button", { class: "primary", onclick: () => go("add") }, t("Add friend"))),
       ids.length ? h("div", { class: "list" }, ids.map(id => {
         const pend = recordsWith(id).filter(r => L.effective(r) === "pending").length;
         return h("button", { class: "card friend", onclick: () => go("friend", id) },
           h("div", { class: "row" }, initial(id),
             h("div", { class: "grow" }, h("div", { class: "who" }, nameOf(id)),
-              h("div", { class: "sub" }, conns.has(id) ? "Connected now" : pend ? `${pend} change${pend > 1 ? "s" : ""} pending` : "Not connected")),
+              h("div", { class: "sub" }, conns.has(id) ? t("Connected now") : pend ? t(pend > 1 ? "{n} changes pending" : "1 change pending", { n: pend }) : t("Not connected"))),
             balanceLabel(bal[id])));
-      })) : h("p", { class: "empty" }, "No friends yet. Tap “Add friend” and let your friend scan the code with their phone camera.")),
-    waiting.length ? h("section", {}, h("div", { class: "sec-head" }, h("h2", {}, "Waiting for friends"), h("span", { class: "sub" }, `${waiting.length} sent`)),
+      })) : h("p", { class: "empty" }, t("No friends yet. Tap “Add friend” and let your friend scan the code with their phone camera."))),
+    waiting.length ? h("section", {}, h("div", { class: "sec-head" }, h("h2", {}, t("Waiting for friends")), h("span", { class: "sub" }, t("{n} sent", { n: waiting.length }))),
       h("div", { class: "list" }, waiting.map(entryCard))) : null,
   ];
 }
@@ -360,46 +471,46 @@ function friendView() {
   const hist = recs.sort((a, b) => b.p.at - a.p.at);
   const fn = c.name;
   const kind = h("select", { id: "new-kind" },
-    h("option", { value: "lent" }, `I lent ${fn} money`), h("option", { value: "borrowed" }, `${fn} lent me money`),
-    h("option", { value: "theyPaid" }, `${fn} paid me back`), h("option", { value: "iPaid" }, `I paid ${fn} back`));
+    h("option", { value: "lent" }, t("I lent {name} money", { name: fn })), h("option", { value: "borrowed" }, t("{name} lent me money", { name: fn })),
+    h("option", { value: "theyPaid" }, t("{name} paid me back", { name: fn })), h("option", { value: "iPaid" }, t("I paid {name} back", { name: fn })));
   const amt = h("input", { id: "new-amt", type: "number", min: "0.01", step: "0.01", inputmode: "decimal", placeholder: "50.00" });
-  const note = h("textarea", { id: "new-note", placeholder: "e.g. Concert tickets, 14 Nov" });
+  const note = h("textarea", { id: "new-note", placeholder: t("e.g. Concert tickets, 14 Nov") });
   const chk = c.check;
   return [
-    h("div", {}, h("button", { class: "link", onclick: () => go("home") }, "← All friends")),
+    h("div", {}, h("button", { class: "link", onclick: () => go("home") }, t("← All friends"))),
     h("header", {},
       h("div", { class: "row" }, initial(f), h("div", { class: "grow" }, h("h1", {}, fn),
-        h("div", { class: "sub" }, conns.has(f) ? "Connected now" : c.lastSeen ? `Last synced ${when(c.lastSeen)}` : "Not synced yet. Open the app at the same time."))),
+        h("div", { class: "sub" }, conns.has(f) ? t("Connected now") : c.lastSeen ? t("Last synced {date}", { date: when(c.lastSeen) }) : t("Not synced yet. Open the app at the same time.")))),
       h("div", { class: "big" }, balanceLabel(v)),
-      v !== 0 ? h("div", {}, h("button", { onclick: () => { kind.value = v > 0 ? "theyPaid" : "iPaid"; amt.value = (Math.abs(v) / 100).toFixed(2); note.value = "Settled in full"; amt.focus(); } }, "Record full payback")) : null),
-    h("div", { class: "card" }, h("div", { class: "row" }, h("span", { class: "grow" }, h("b", {}, "History check")),
-      chk ? h("span", { class: "pill " + (chk.ok ? "ok" : "bad") }, chk.ok ? "matches" : "differs") : h("span", { class: "pill pending" }, "not checked")),
-      h("p", { class: "sub" }, !chk ? `After the first sync, both phones compare a fingerprint of your shared history.`
-        : chk.ok ? `${chk.n} signed entr${chk.n === 1 ? "y" : "ies"}, identical on both phones (checked ${when(chk.at)}).`
-          : `${fn}'s phone has a different history. Some entry did not pass the signature check. Talk to ${fn} before agreeing to new changes.`),
-      chk ? h("p", { class: "chain sub" }, `fingerprint ${chk.head.slice(0, 16)}…`) : null),
+      v !== 0 ? h("div", {}, h("button", { onclick: () => { kind.value = v > 0 ? "theyPaid" : "iPaid"; amt.value = (Math.abs(v) / 100).toFixed(2); note.value = t("Settled in full"); amt.focus(); } }, t("Record full payback"))) : null),
+    h("div", { class: "card" }, h("div", { class: "row" }, h("span", { class: "grow" }, h("b", {}, t("History check"))),
+      chk ? h("span", { class: "pill " + (chk.ok ? "ok" : "bad") }, chk.ok ? t("matches") : t("differs")) : h("span", { class: "pill pending" }, t("not checked"))),
+      h("p", { class: "sub" }, !chk ? t("After the first sync, both phones compare a fingerprint of your shared history.")
+        : chk.ok ? t(chk.n === 1 ? "1 signed entry, identical on both phones (checked {date})." : "{n} signed entries, identical on both phones (checked {date}).", { n: chk.n, date: when(chk.at) })
+          : t("{name}'s phone has a different history. Some entry did not pass the signature check. Talk to {name} before agreeing to new changes.", { name: fn })),
+      chk ? h("p", { class: "chain sub" }, t("fingerprint {fp}…", { fp: chk.head.slice(0, 16) })) : null),
     V.err ? h("p", { class: "err" }, V.err) : null,
-    h("section", { class: "card" }, h("h2", {}, "Record a change"), h("p", { class: "sub" }, `${fn} has to accept it before it counts.`),
-      h("div", { class: "form" }, h("label", {}, "What happened", kind), h("label", {}, "Amount (€)", amt), h("label", { class: "full" }, "Note", note),
-        h("div", { class: "actions full" }, h("button", { class: "primary", onclick: () => propose(f, kind.value, amt.value, note.value) }, `Send to ${fn}`)))),
-    h("section", {}, h("h2", {}, "History"),
-      hist.length ? h("div", { class: "list" }, hist.map(entryCard)) : h("p", { class: "empty" }, `Nothing recorded with ${fn} yet.`)),
+    h("section", { class: "card" }, h("h2", {}, t("Record a change")), h("p", { class: "sub" }, t("{name} has to accept it before it counts.", { name: fn })),
+      h("div", { class: "form" }, h("label", {}, t("What happened"), kind), h("label", {}, t("Amount (€)"), amt), h("label", { class: "full" }, t("Note"), note),
+        h("div", { class: "actions full" }, h("button", { class: "primary", onclick: () => propose(f, kind.value, amt.value, note.value) }, t("Send to {name}", { name: fn }))))),
+    h("section", {}, h("h2", {}, t("History")),
+      hist.length ? h("div", { class: "list" }, hist.map(entryCard)) : h("p", { class: "empty" }, t("Nothing recorded with {name} yet.", { name: fn }))),
   ];
 }
 
 function addView() {
   const link = pairLink();
-  const paste = h("input", { id: "paste-link", placeholder: "Paste your friend's link" });
+  const paste = h("input", { id: "paste-link", placeholder: t("Paste your friend's link") });
   return [
-    h("div", {}, h("button", { class: "link", onclick: () => go("home") }, "← Back")),
-    h("header", {}, h("h1", {}, "Add a friend"),
-      h("p", { class: "sub" }, "Your friend scans this with their normal phone camera. If they don't have Bierdeckel yet, the code opens it, they install it, and you're connected.")),
+    h("div", {}, h("button", { class: "link", onclick: () => go("home") }, t("← Back"))),
+    h("header", {}, h("h1", {}, t("Add a friend")),
+      h("p", { class: "sub" }, t("Your friend scans this with their normal phone camera. If they don't have Bierdeckel yet, the code opens it, they install it, and you're connected."))),
     qrSvg(link),
     h("div", { class: "actions", style: "justify-content:center" },
-      h("button", { class: "primary", onclick: startScan }, "Scan friend's code"),
-      h("button", { onclick: async () => { try { await navigator.clipboard.writeText(link); toast("Link copied. Send it on WhatsApp."); } catch { paste.value = link; paste.select(); } } }, "Copy my link")),
-    h("section", { class: "card" }, h("label", {}, "Got a link from a friend instead?", paste),
-      h("button", { onclick: async () => { const c = await parsePair(paste.value); c ? addContact(c) : toast("That link is not a Bierdeckel invite."); } }, "Connect")),
+      h("button", { class: "primary", onclick: startScan }, t("Scan friend's code")),
+      h("button", { onclick: async () => { try { await navigator.clipboard.writeText(link); toast(t("Link copied. Send it on WhatsApp.")); } catch { paste.value = link; paste.select(); } } }, t("Copy my link"))),
+    h("section", { class: "card" }, h("label", {}, t("Got a link from a friend instead?"), paste),
+      h("button", { onclick: async () => { const c = await parsePair(paste.value); c ? addContact(c) : toast(t("That link is not a Bierdeckel invite.")); } }, t("Connect"))),
   ];
 }
 
@@ -411,24 +522,27 @@ function settingsView() {
       const data = JSON.parse(await file.files[0].text());
       if (!data.me || !data.me.privJwk || !data.records || !data.contacts) throw 0;
       V.importing = data; render();
-    } catch { toast("That file is not a Bierdeckel backup."); }
+    } catch { toast(t("That file is not a Bierdeckel backup.")); }
   });
   const imp = V.importing;
   return [
-    h("div", {}, h("button", { class: "link", onclick: () => { V.importing = null; go("home"); } }, "← Back")),
-    h("header", {}, h("h1", {}, "Settings")),
-    h("section", { class: "card" }, h("label", {}, "Your name (friends see it after the next sync)", name),
-      h("button", { onclick: async () => { if (name.value.trim()) { S.me.name = name.value.trim().slice(0, 40); await save(); conns.forEach(hello); toast("Name saved"); } } }, "Save name")),
-    h("section", { class: "card" }, h("h2", {}, "Backup"),
-      h("p", { class: "sub" }, "Your book only exists on this phone and on your friends' phones. Save a backup now and then. The file contains your secret key, so keep it private."),
-      h("div", { class: "actions" }, h("button", { onclick: exportBackup }, "Save backup file")),
-      h("label", {}, "Restore from a backup file", file),
+    h("div", {}, h("button", { class: "link", onclick: () => { V.importing = null; go("home"); } }, t("← Back"))),
+    h("header", {}, h("h1", {}, t("Settings"))),
+    h("section", { class: "card" }, h("h2", {}, "Sprache / Language"),
+      h("div", { class: "actions" }, [["de", "Deutsch"], ["en", "English"]].map(([l, label]) =>
+        h("button", { class: LANG === l ? "primary" : "", "aria-pressed": String(LANG === l), onclick: () => setLang(l) }, label)))),
+    h("section", { class: "card" }, h("label", {}, t("Your name (friends see it after the next sync)"), name),
+      h("button", { onclick: async () => { if (name.value.trim()) { S.me.name = name.value.trim().slice(0, 40); await save(); conns.forEach(hello); toast(t("Name saved")); } } }, t("Save name"))),
+    h("section", { class: "card" }, h("h2", {}, t("Backup")),
+      h("p", { class: "sub" }, t("Your book only exists on this phone and on your friends' phones. Save a backup now and then. The file contains your secret key, so keep it private.")),
+      h("div", { class: "actions" }, h("button", { onclick: exportBackup }, t("Save backup file"))),
+      h("label", {}, t("Restore from a backup file"), file),
       imp ? h("div", { class: "card attn" },
-        h("p", {}, `Replace this phone's book with the backup of ${imp.me.name}: ${Object.keys(imp.contacts).length} friends, ${Object.keys(imp.records).length} entries?`),
-        h("div", { class: "actions" }, h("button", { class: "danger", onclick: async () => { S = imp; await save(); location.reload(); } }, "Replace"),
-          h("button", { onclick: () => { V.importing = null; render(); } }, "Cancel"))) : null),
-    h("section", { class: "card" }, h("h2", {}, "Share the app"), h("p", { class: "sub" }, "Opens Bierdeckel without connecting to you."), qrSvg(appUrl())),
-    h("p", { class: "sub chain" }, `Your ID ${S.me.id}`),
+        h("p", {}, t("Replace this phone's book with the backup of {name}: {f} friends, {e} entries?", { name: imp.me.name, f: Object.keys(imp.contacts).length, e: Object.keys(imp.records).length })),
+        h("div", { class: "actions" }, h("button", { class: "danger", onclick: async () => { S = imp; await save(); location.reload(); } }, t("Replace")),
+          h("button", { onclick: () => { V.importing = null; render(); } }, t("Cancel")))) : null),
+    h("section", { class: "card" }, h("h2", {}, t("Share the app")), h("p", { class: "sub" }, t("Opens Bierdeckel without connecting to you.")), qrSvg(appUrl())),
+    h("p", { class: "sub chain" }, t("Your ID {id}", { id: S.me.id })),
   ];
 }
 function exportBackup() {
@@ -441,13 +555,13 @@ function exportBackup() {
 async function startScan() {
   let stream;
   try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false }); }
-  catch { return toast("Camera not available. Use your phone camera app or paste the link."); }
+  catch { return toast(t("Camera not available. Use your phone camera app or paste the link.")); }
   const video = h("video", { class: "scan", playsinline: true, muted: true });
   const canvas = document.createElement("canvas"), ctx = canvas.getContext("2d", { willReadFrequently: true });
   let done = false;
   const stop = () => { done = true; stream.getTracks().forEach(t => t.stop()); overlay.remove(); };
   const overlay = h("div", { style: "position:fixed;inset:0;z-index:10;background:var(--bg);padding:max(20px,env(safe-area-inset-top)) 16px 20px;display:flex;flex-direction:column;gap:14px" },
-    h("h2", {}, "Point at your friend's code"), video, h("button", { onclick: stop }, "Cancel"));
+    h("h2", {}, t("Point at your friend's code")), video, h("button", { onclick: stop }, t("Cancel")));
   document.body.append(overlay);
   video.srcObject = stream; await video.play().catch(() => { });
   const tick = async () => {
@@ -483,7 +597,7 @@ async function handleHash() {
   if (!location.hash.startsWith("#pair=")) return;
   const c = await parsePair(location.hash);
   history.replaceState(null, "", appUrl());
-  if (!c) return toast("That invite link is broken.");
+  if (!c) return toast(t("That invite link is broken."));
   if (S) addContact(c); else { V.pendingPair = c; render(); }
 }
 addEventListener("beforeinstallprompt", e => { e.preventDefault(); V.install = e; render(); });
@@ -491,7 +605,7 @@ addEventListener("hashchange", handleHash);
 document.addEventListener("visibilitychange", keepAlive);
 setInterval(keepAlive, 25000);
 (async () => {
-  try { S = (await store.get("state")) || null; } catch { app.replaceChildren(h("p", { class: "err" }, "This browser blocks storage. Open Bierdeckel in your normal browser, not a private window.")); return; }
+  try { S = (await store.get("state")) || null; } catch { app.replaceChildren(h("p", { class: "err" }, t("This browser blocks storage. Open Bierdeckel in your normal browser, not a private window."))); return; }
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => { });
   render();
   await handleHash();
