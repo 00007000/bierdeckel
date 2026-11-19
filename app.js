@@ -103,6 +103,8 @@ const DE = {
     "1. {name} scannt diesen Code (Bierdeckel → {you} → „Per QR-Code abgleichen“ → „Seinen Code scannen“). 2. Dann scannst du seinen.",
   "The code changes by itself. Hold it steady until it is complete.": "Der Code wechselt von selbst. Halte die Kamera ruhig, bis alles gelesen ist.",
   "Scan their code": "Seinen Code scannen",
+  "Code {k} of {n}": "Code {k} von {n}",
+  "Your data is split into {n} codes that change by themselves. Hold the camera steady until all are read.": "Deine Daten sind auf {n} Codes verteilt, die von selbst wechseln. Halte die Kamera ruhig, bis alle gelesen sind.",
   "Reading code {got} of {of}…": "Lese Code {got} von {of}…",
   "Not connected? Sync right here: you scan each other's code once.": "Nicht verbunden? Gleicht euch direkt hier ab: Ihr scannt einmal gegenseitig eure Codes.",
   "Turn on Bluetooth to sync with friends nearby.": "Schalte Bluetooth ein, um mit Freunden in der Nähe zu synchronisieren.",
@@ -691,14 +693,16 @@ function syncView() {
   if (sy.frames.length > 1) syncTimer = setInterval(() => {
     const el = document.getElementById("syncqr"); if (!el) return clearInterval(syncTimer);
     sy.k = (sy.k + 1) % sy.frames.length; el.innerHTML = qrSvg(sy.frames[sy.k]).innerHTML;
-  }, 350);
+    const lab = document.getElementById("syncpart"); if (lab) lab.textContent = t("Code {k} of {n}", { k: sy.k + 1, n: sy.frames.length });
+  }, 600);
   return [
     h("div", {}, h("button", { class: "link", onclick: () => { clearInterval(syncTimer); go("friend", f); } }, "← " + c.name)),
     h("header", {}, h("h1", {}, t("Sync by QR code")),
       h("p", { class: "sub" }, sy.afterScan ? t("Done on your side. Now let {name} scan this code so their phone gets your changes too.", { name: c.name })
         : t("1. {name} scans this code (Bierdeckel → {you} → “Sync by QR code” → “Scan their code”). 2. Then you scan theirs.", { name: c.name, you: S.me.name }))),
     box,
-    sy.frames.length > 1 ? h("p", { class: "sub", style: "text-align:center" }, t("The code changes by itself. Hold it steady until it is complete.")) : null,
+    sy.frames.length > 1 ? h("p", { class: "sub", style: "text-align:center" }, h("b", { id: "syncpart" }, t("Code {k} of {n}", { k: 1, n: sy.frames.length })), " · ",
+      t("Your data is split into {n} codes that change by themselves. Hold the camera steady until all are read.", { n: sy.frames.length })) : null,
     h("div", { class: "actions", style: "justify-content:center" }, h("button", { class: "primary", onclick: startScan }, t("Scan their code"))),
   ];
 }
